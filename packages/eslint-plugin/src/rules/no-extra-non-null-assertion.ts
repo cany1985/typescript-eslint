@@ -1,8 +1,8 @@
 import type { TSESTree } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import { createRule } from '../util';
 
-export default util.createRule({
+export default createRule({
   name: 'no-extra-non-null-assertion',
   meta: {
     type: 'problem',
@@ -11,10 +11,10 @@ export default util.createRule({
       recommended: 'recommended',
     },
     fixable: 'code',
-    schema: [],
     messages: {
       noExtraNonNullAssertion: 'Forbidden extra non-null assertion.',
     },
+    schema: [],
   },
   defaultOptions: [],
   create(context) {
@@ -31,11 +31,11 @@ export default util.createRule({
     }
 
     return {
-      'TSNonNullExpression > TSNonNullExpression': checkExtraNonNullAssertion,
-      'MemberExpression[optional = true] > TSNonNullExpression.object':
-        checkExtraNonNullAssertion,
       'CallExpression[optional = true] > TSNonNullExpression.callee':
         checkExtraNonNullAssertion,
+      'MemberExpression[optional = true] > TSNonNullExpression.object':
+        checkExtraNonNullAssertion,
+      'TSNonNullExpression > TSNonNullExpression': checkExtraNonNullAssertion,
     };
   },
 });

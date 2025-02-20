@@ -2,12 +2,7 @@ import { RuleTester } from '@typescript-eslint/rule-tester';
 
 import rule from '../../src/rules/no-require-imports';
 
-const ruleTester = new RuleTester({
-  parserOptions: {
-    sourceType: 'module',
-  },
-  parser: '@typescript-eslint/parser',
-});
+const ruleTester = new RuleTester();
 
 ruleTester.run('no-require-imports', rule, {
   valid: [
@@ -23,15 +18,105 @@ import { createRequire } from 'module';
 const require = createRequire();
 require('remark-preset-prettier');
     `,
+    {
+      code: "const pkg = require('./package.json');",
+      options: [{ allow: ['/package\\.json$'] }],
+    },
+    {
+      code: "const pkg = require('../package.json');",
+      options: [{ allow: ['/package\\.json$'] }],
+    },
+    {
+      code: 'const pkg = require(`./package.json`);',
+      options: [{ allow: ['/package\\.json$'] }],
+    },
+    {
+      code: "const pkg = require('../packages/package.json');",
+      options: [{ allow: ['/package\\.json$'] }],
+    },
+    {
+      code: "import pkg = require('../packages/package.json');",
+      options: [{ allow: ['/package\\.json$'] }],
+    },
+    {
+      code: "import pkg = require('data.json');",
+      options: [{ allow: ['\\.json$'] }],
+    },
+    {
+      code: "import pkg = require('some-package');",
+      options: [{ allow: ['^some-package$'] }],
+    },
+    {
+      code: "import foo = require('foo');",
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: `
+let require = bazz;
+trick(require('foo'));
+      `,
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: `
+let require = bazz;
+const foo = require('./foo.json') as Foo;
+      `,
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: `
+let require = bazz;
+const foo: Foo = require('./foo.json').default;
+      `,
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: `
+let require = bazz;
+const foo = <Foo>require('./foo.json');
+      `,
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: `
+let require = bazz;
+const configValidator = new Validator(require('./a.json'));
+configValidator.addSchema(require('./a.json'));
+      `,
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: `
+let require = bazz;
+require('foo');
+      `,
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: `
+let require = bazz;
+require?.('foo');
+      `,
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: `
+import { createRequire } from 'module';
+const require = createRequire();
+require('remark-preset-prettier');
+      `,
+      options: [{ allowAsImport: true }],
+    },
   ],
   invalid: [
     {
       code: "var lib = require('lib');",
       errors: [
         {
-          messageId: 'noRequireImports',
-          line: 1,
           column: 11,
+          line: 1,
+          messageId: 'noRequireImports',
         },
       ],
     },
@@ -39,9 +124,9 @@ require('remark-preset-prettier');
       code: "let lib2 = require('lib2');",
       errors: [
         {
-          messageId: 'noRequireImports',
-          line: 1,
           column: 12,
+          line: 1,
+          messageId: 'noRequireImports',
         },
       ],
     },
@@ -52,14 +137,14 @@ var lib5 = require('lib5'),
       `,
       errors: [
         {
-          messageId: 'noRequireImports',
-          line: 2,
           column: 12,
+          line: 2,
+          messageId: 'noRequireImports',
         },
         {
-          messageId: 'noRequireImports',
-          line: 3,
           column: 10,
+          line: 3,
+          messageId: 'noRequireImports',
         },
       ],
     },
@@ -67,9 +152,9 @@ var lib5 = require('lib5'),
       code: "import lib8 = require('lib8');",
       errors: [
         {
-          messageId: 'noRequireImports',
-          line: 1,
           column: 15,
+          line: 1,
+          messageId: 'noRequireImports',
         },
       ],
     },
@@ -77,9 +162,9 @@ var lib5 = require('lib5'),
       code: "var lib = require?.('lib');",
       errors: [
         {
-          messageId: 'noRequireImports',
-          line: 1,
           column: 11,
+          line: 1,
+          messageId: 'noRequireImports',
         },
       ],
     },
@@ -87,9 +172,9 @@ var lib5 = require('lib5'),
       code: "let lib2 = require?.('lib2');",
       errors: [
         {
-          messageId: 'noRequireImports',
-          line: 1,
           column: 12,
+          line: 1,
+          messageId: 'noRequireImports',
         },
       ],
     },
@@ -100,16 +185,187 @@ var lib5 = require?.('lib5'),
       `,
       errors: [
         {
-          messageId: 'noRequireImports',
-          line: 2,
           column: 12,
+          line: 2,
+          messageId: 'noRequireImports',
         },
         {
-          messageId: 'noRequireImports',
-          line: 3,
           column: 10,
+          line: 3,
+          messageId: 'noRequireImports',
         },
       ],
+    },
+    {
+      code: "const pkg = require('./package.json');",
+      errors: [
+        {
+          column: 13,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+    },
+    {
+      code: "const pkg = require('./package.jsonc');",
+      errors: [
+        {
+          column: 13,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allow: ['/package\\.json$'] }],
+    },
+    {
+      code: 'const pkg = require(`./package.jsonc`);',
+      errors: [
+        {
+          column: 13,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allow: ['/package\\.json$'] }],
+    },
+    {
+      code: "import pkg = require('./package.json');",
+      errors: [
+        {
+          column: 14,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+    },
+    {
+      code: "import pkg = require('./package.jsonc');",
+      errors: [
+        {
+          column: 14,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allow: ['/package\\.json$'] }],
+    },
+    {
+      code: "import pkg = require('./package.json');",
+      errors: [
+        {
+          column: 14,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allow: ['^some-package$'] }],
+    },
+    {
+      code: "var foo = require?.('foo');",
+      errors: [
+        {
+          column: 11,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: "let foo = trick(require?.('foo'));",
+      errors: [
+        {
+          column: 17,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: "trick(require('foo'));",
+      errors: [
+        {
+          column: 7,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: "const foo = require('./foo.json') as Foo;",
+      errors: [
+        {
+          column: 13,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: "const foo: Foo = require('./foo.json').default;",
+      errors: [
+        {
+          column: 18,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: "const foo = <Foo>require('./foo.json');",
+      errors: [
+        {
+          column: 18,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: `
+const configValidator = new Validator(require('./a.json'));
+configValidator.addSchema(require('./a.json'));
+      `,
+      errors: [
+        {
+          column: 39,
+          line: 2,
+          messageId: 'noRequireImports',
+        },
+        {
+          column: 27,
+          line: 3,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: 'require(foo);',
+      errors: [
+        {
+          column: 1,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allowAsImport: true }],
+    },
+    {
+      code: 'require?.(foo);',
+      errors: [
+        {
+          column: 1,
+          line: 1,
+          messageId: 'noRequireImports',
+        },
+      ],
+      options: [{ allowAsImport: true }],
     },
   ],
 });

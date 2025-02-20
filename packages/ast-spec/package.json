@@ -1,6 +1,6 @@
 {
   "name": "@typescript-eslint/ast-spec",
-  "version": "6.3.0",
+  "version": "8.24.1",
   "description": "Complete specification for the TypeScript-ESTree AST",
   "private": true,
   "keywords": [
@@ -9,10 +9,11 @@
     "estree"
   ],
   "engines": {
-    "node": "^16.0.0 || >=18.0.0"
+    "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
   },
   "files": [
     "dist",
+    "!*.tsbuildinfo",
     "package.json",
     "README.md",
     "LICENSE"
@@ -25,6 +26,7 @@
   "bugs": {
     "url": "https://github.com/typescript-eslint/typescript-eslint/issues"
   },
+  "homepage": "https://typescript-eslint.io",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -34,9 +36,9 @@
     "postclean": "rimraf dist && rimraf coverage",
     "clean-fixtures": "rimraf -g \"./src/**/fixtures/**/snapshots\"",
     "format": "prettier --write \"./**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx,json,md,css}\" --ignore-path ../../.prettierignore",
-    "lint": "nx lint",
+    "lint": "npx nx lint",
     "test": "jest",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "check-types": "npx nx typecheck"
   },
   "funding": {
     "type": "opencollective",
@@ -46,14 +48,17 @@
     "@babel/code-frame": "*",
     "@babel/core": "*",
     "@babel/eslint-parser": "*",
-    "@babel/parser": "*",
-    "@microsoft/api-extractor": "^7.36.1",
+    "@jest/types": "29.6.3",
+    "@microsoft/api-extractor": "^7.47.11",
+    "@typescript-eslint/typescript-estree": "workspace:*",
     "glob": "*",
-    "jest-diff": "*",
-    "jest-snapshot": "*",
-    "jest-specific-snapshot": "*",
+    "jest": "29.7.0",
+    "jest-diff": "^29.7.0",
+    "jest-specific-snapshot": "^8.0.0",
     "make-dir": "*",
+    "prettier": "^3.2.5",
     "pretty-format": "*",
+    "rimraf": "*",
     "typescript": "*"
   }
 }

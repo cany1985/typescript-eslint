@@ -1,16 +1,28 @@
 import type { TSESTree } from '@typescript-eslint/utils';
+import type * as ts from 'typescript';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 import * as tsutils from 'ts-api-utils';
 
-import * as util from '../util';
-import { getThisExpression } from '../util';
+import {
+  createRule,
+  getConstrainedTypeAtLocation,
+  getParserServices,
+  getThisExpression,
+  isTypeAnyType,
+} from '../util';
 
 const enum State {
   Unsafe = 1,
   Safe = 2,
 }
 
-export default util.createRule({
+function createDataType(type: ts.Type): '`any`' | '`error` typed' {
+  const isErrorType = tsutils.isIntrinsicErrorType(type);
+  return isErrorType ? '`error` typed' : '`any`';
+}
+
+export default createRule({
   name: 'no-unsafe-member-access',
   meta: {
     type: 'problem',
@@ -20,26 +32,25 @@ export default util.createRule({
       requiresTypeChecking: true,
     },
     messages: {
+      unsafeComputedMemberAccess:
+        'Computed name {{property}} resolves to an {{type}} value.',
       unsafeMemberExpression:
-        'Unsafe member access {{property}} on an `any` value.',
+        'Unsafe member access {{property}} on an {{type}} value.',
       unsafeThisMemberExpression: [
         'Unsafe member access {{property}} on an `any` value. `this` is typed as `any`.',
         'You can try to fix this by turning on the `noImplicitThis` compiler option, or adding a `this` parameter to the function.',
       ].join('\n'),
-      unsafeComputedMemberAccess:
-        'Computed name {{property}} resolves to an any value.',
     },
     schema: [],
   },
   defaultOptions: [],
   create(context) {
-    const services = util.getParserServices(context);
+    const services = getParserServices(context);
     const compilerOptions = services.program.getCompilerOptions();
     const isNoImplicitThis = tsutils.isStrictCompilerOptionEnabled(
       compilerOptions,
       'noImplicitThis',
     );
-    const sourceCode = context.getSourceCode();
 
     const stateCache = new Map<TSESTree.Node, State>();
 
@@ -60,11 +71,11 @@ export default util.createRule({
       }
 
       const type = services.getTypeAtLocation(node.object);
-      const state = util.isTypeAnyType(type) ? State.Unsafe : State.Safe;
+      const state = isTypeAnyType(type) ? State.Unsafe : State.Safe;
       stateCache.set(node, state);
 
       if (state === State.Unsafe) {
-        const propertyName = sourceCode.getText(node.property);
+        const propertyName = context.sourceCode.getText(node.property);
 
         let messageId: 'unsafeMemberExpression' | 'unsafeThisMemberExpression' =
           'unsafeMemberExpression';
@@ -75,8 +86,8 @@ export default util.createRule({
 
           if (
             thisExpression &&
-            util.isTypeAnyType(
-              util.getConstrainedTypeAtLocation(services, thisExpression),
+            isTypeAnyType(
+              getConstrainedTypeAtLocation(services, thisExpression),
             )
           ) {
             messageId = 'unsafeThisMemberExpression';
@@ -84,9 +95,10 @@ export default util.createRule({
         }
 
         context.report({
-          node,
+          node: node.property,
           messageId,
           data: {
+            type: createDataType(type),
             property: node.computed ? `[${propertyName}]` : `.${propertyName}`,
           },
         });
@@ -96,8 +108,8 @@ export default util.createRule({
     }
 
     return {
-      // ignore MemberExpression if it's parent is TSClassImplements or TSInterfaceHeritage
-      ':not(TSClassImplements, TSInterfaceHeritage) > MemberExpression':
+      // ignore MemberExpressions with ancestors of type `TSClassImplements` or `TSInterfaceHeritage`
+      'MemberExpression:not(TSClassImplements MemberExpression, TSInterfaceHeritage MemberExpression)':
         checkMemberExpression,
       'MemberExpression[computed = true] > *.property'(
         node: TSESTree.Expression,
@@ -116,12 +128,13 @@ export default util.createRule({
 
         const type = services.getTypeAtLocation(node);
 
-        if (util.isTypeAnyType(type)) {
-          const propertyName = sourceCode.getText(node);
+        if (isTypeAnyType(type)) {
+          const propertyName = context.sourceCode.getText(node);
           context.report({
             node,
             messageId: 'unsafeComputedMemberAccess',
             data: {
+              type: createDataType(type),
               property: `[${propertyName}]`,
             },
           });

@@ -1,9 +1,10 @@
 {
   "name": "@typescript-eslint/scope-manager",
-  "version": "6.3.0",
+  "version": "8.24.1",
   "description": "TypeScript scope analyser for ESLint",
   "files": [
     "dist",
+    "!*.tsbuildinfo",
     "package.json",
     "README.md",
     "LICENSE"
@@ -16,8 +17,9 @@
     },
     "./package.json": "./package.json"
   },
+  "types": "./dist/index.d.ts",
   "engines": {
-    "node": "^16.0.0 || >=18.0.0"
+    "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
   },
   "repository": {
     "type": "git",
@@ -27,6 +29,7 @@
   "bugs": {
     "url": "https://github.com/typescript-eslint/typescript-eslint/issues"
   },
+  "homepage": "https://typescript-eslint.io/packages/scope-manager",
   "license": "MIT",
   "keywords": [
     "eslint",
@@ -34,28 +37,28 @@
     "estree"
   ],
   "scripts": {
-    "build": "nx build",
-    "clean": "nx clean",
-    "clean-fixtures": "nx clean-fixtures",
+    "build": "npx nx build",
+    "clean": "npx nx clean",
+    "clean-fixtures": "npx nx clean-fixtures",
     "format": "prettier --write \"./**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx,json,md,css}\" --ignore-path ../../.prettierignore",
-    "generate-lib": "nx generate-lib",
-    "lint": "nx lint",
-    "test": "nx test --code-coverage",
-    "typecheck": "nx typecheck"
+    "generate-lib": "npx nx generate-lib repo",
+    "lint": "npx nx lint",
+    "test": "npx nx test --code-coverage",
+    "check-types": "npx nx typecheck"
   },
   "dependencies": {
-    "@typescript-eslint/types": "6.3.0",
-    "@typescript-eslint/visitor-keys": "6.3.0"
+    "@typescript-eslint/types": "8.24.1",
+    "@typescript-eslint/visitor-keys": "8.24.1"
   },
   "devDependencies": {
+    "@jest/types": "29.6.3",
     "@types/glob": "*",
-    "@typescript-eslint/typescript-estree": "6.3.0",
+    "@typescript-eslint/typescript-estree": "8.24.1",
     "glob": "*",
     "jest-specific-snapshot": "*",
     "make-dir": "*",
-    "prettier": "*",
+    "prettier": "^3.2.5",
     "pretty-format": "*",
-    "rimraf": "*",
     "typescript": "*"
   },
   "funding": {

@@ -1,20 +1,20 @@
-import * as util from '../src/util';
+import { createRule } from '../src/util';
 import { areOptionsValid } from './areOptionsValid';
 
-const exampleRule = util.createRule<['value-a' | 'value-b'], never>({
-  name: 'my-example-rule',
-  meta: {
-    type: 'layout',
-    docs: {
-      description: 'Detects something or other',
-    },
-    schema: [{ type: 'string', enum: ['value-a', 'value-b'] }],
-    messages: {},
-  },
-  defaultOptions: ['value-a'],
+const exampleRule = createRule<['value-a' | 'value-b'], never>({
   create() {
     return {};
   },
+  defaultOptions: ['value-a'],
+  meta: {
+    docs: {
+      description: 'Detects something or other',
+    },
+    messages: {},
+    schema: [{ enum: ['value-a', 'value-b'], type: 'string' }],
+    type: 'suggestion',
+  },
+  name: 'my-example-rule',
 });
 
 test('returns true for valid options', () => {

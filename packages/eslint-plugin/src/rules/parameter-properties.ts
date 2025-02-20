@@ -1,29 +1,30 @@
 import type { TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import { createRule, nullThrows } from '../util';
 
 type Modifier =
-  | 'private readonly'
   | 'private'
-  | 'protected readonly'
+  | 'private readonly'
   | 'protected'
-  | 'public readonly'
+  | 'protected readonly'
   | 'public'
+  | 'public readonly'
   | 'readonly';
 
 type Prefer = 'class-property' | 'parameter-property';
 
-type Options = [
+export type Options = [
   {
     allow?: Modifier[];
     prefer?: Prefer;
   },
 ];
 
-type MessageIds = 'preferClassProperty' | 'preferParameterProperty';
+export type MessageIds = 'preferClassProperty' | 'preferParameterProperty';
 
-export default util.createRule<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: 'parameter-properties',
   meta: {
     type: 'problem',
@@ -39,6 +40,7 @@ export default util.createRule<Options, MessageIds>({
     },
     schema: [
       {
+        type: 'object',
         $defs: {
           modifier: {
             type: 'string',
@@ -53,20 +55,23 @@ export default util.createRule<Options, MessageIds>({
             ],
           },
         },
-        type: 'object',
+        additionalProperties: false,
         properties: {
           allow: {
             type: 'array',
+            description:
+              'Whether to allow certain kinds of properties to be ignored.',
             items: {
               $ref: '#/items/0/$defs/modifier',
             },
           },
           prefer: {
             type: 'string',
+            description:
+              'Whether to prefer class properties or parameter properties.',
             enum: ['class-property', 'parameter-property'],
           },
         },
-        additionalProperties: false,
       },
     ],
   },
@@ -149,8 +154,6 @@ export default util.createRule<Options, MessageIds>({
       return created;
     }
 
-    const sourceCode = context.getSourceCode();
-
     function typeAnnotationsMatch(
       classProperty: TSESTree.PropertyDefinition,
       constructorParameter: TSESTree.Identifier,
@@ -165,18 +168,17 @@ export default util.createRule<Options, MessageIds>({
       }
 
       return (
-        sourceCode.getText(classProperty.typeAnnotation) ===
-        sourceCode.getText(constructorParameter.typeAnnotation)
+        context.sourceCode.getText(classProperty.typeAnnotation) ===
+        context.sourceCode.getText(constructorParameter.typeAnnotation)
       );
     }
 
     return {
-      'ClassDeclaration, ClassExpression'(): void {
-        propertyNodesByNameStack.push(new Map());
-      },
-
       ':matches(ClassDeclaration, ClassExpression):exit'(): void {
-        const propertyNodesByName = propertyNodesByNameStack.pop()!;
+        const propertyNodesByName = nullThrows(
+          propertyNodesByNameStack.pop(),
+          'Stack should exist on class exit',
+        );
 
         for (const [name, nodes] of propertyNodesByName) {
           if (
@@ -189,11 +191,11 @@ export default util.createRule<Options, MessageIds>({
             )
           ) {
             context.report({
+              node: nodes.classProperty,
+              messageId: 'preferParameterProperty',
               data: {
                 parameter: name,
               },
-              messageId: 'preferParameterProperty',
-              node: nodes.classProperty,
             });
           }
         }
@@ -210,6 +212,10 @@ export default util.createRule<Options, MessageIds>({
             getNodesByName(element.key.name).classProperty = element;
           }
         }
+      },
+
+      'ClassDeclaration, ClassExpression'(): void {
+        propertyNodesByNameStack.push(new Map());
       },
 
       'MethodDefinition[kind="constructor"]'(

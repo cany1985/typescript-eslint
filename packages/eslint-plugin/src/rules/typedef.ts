@@ -1,9 +1,10 @@
 import type { TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import { createRule } from '../util';
 
-const enum OptionKeys {
+export const enum OptionKeys {
   ArrayDestructuring = 'arrayDestructuring',
   ArrowParameter = 'arrowParameter',
   MemberVariableDeclaration = 'memberVariableDeclaration',
@@ -14,13 +15,14 @@ const enum OptionKeys {
   VariableDeclarationIgnoreFunction = 'variableDeclarationIgnoreFunction',
 }
 
-type Options = { [k in OptionKeys]?: boolean };
+export type Options = [Partial<Record<OptionKeys, boolean>>];
 
-type MessageIds = 'expectedTypedef' | 'expectedTypedefNamed';
+export type MessageIds = 'expectedTypedef' | 'expectedTypedefNamed';
 
-export default util.createRule<[Options], MessageIds>({
+export default createRule<Options, MessageIds>({
   name: 'typedef',
   meta: {
+    type: 'suggestion',
     docs: {
       description: 'Require type annotations in certain places',
     },
@@ -33,18 +35,49 @@ export default util.createRule<[Options], MessageIds>({
         type: 'object',
         additionalProperties: false,
         properties: {
-          [OptionKeys.ArrayDestructuring]: { type: 'boolean' },
-          [OptionKeys.ArrowParameter]: { type: 'boolean' },
-          [OptionKeys.MemberVariableDeclaration]: { type: 'boolean' },
-          [OptionKeys.ObjectDestructuring]: { type: 'boolean' },
-          [OptionKeys.Parameter]: { type: 'boolean' },
-          [OptionKeys.PropertyDeclaration]: { type: 'boolean' },
-          [OptionKeys.VariableDeclaration]: { type: 'boolean' },
-          [OptionKeys.VariableDeclarationIgnoreFunction]: { type: 'boolean' },
+          [OptionKeys.ArrayDestructuring]: {
+            type: 'boolean',
+            description:
+              'Whether to enforce type annotations on variables declared using array destructuring.',
+          },
+          [OptionKeys.ArrowParameter]: {
+            type: 'boolean',
+            description:
+              'Whether to enforce type annotations for parameters of arrow functions.',
+          },
+          [OptionKeys.MemberVariableDeclaration]: {
+            type: 'boolean',
+            description:
+              'Whether to enforce type annotations on member variables of classes.',
+          },
+          [OptionKeys.ObjectDestructuring]: {
+            type: 'boolean',
+            description:
+              'Whether to enforce type annotations on variables declared using object destructuring.',
+          },
+          [OptionKeys.Parameter]: {
+            type: 'boolean',
+            description:
+              'Whether to enforce type annotations for parameters of functions and methods.',
+          },
+          [OptionKeys.PropertyDeclaration]: {
+            type: 'boolean',
+            description:
+              'Whether to enforce type annotations for properties of interfaces and types.',
+          },
+          [OptionKeys.VariableDeclaration]: {
+            type: 'boolean',
+            description:
+              'Whether to enforce type annotations for variable declarations, excluding array and object destructuring.',
+          },
+          [OptionKeys.VariableDeclarationIgnoreFunction]: {
+            type: 'boolean',
+            description:
+              'Whether to ignore variable declarations for non-arrow and arrow functions.',
+          },
         },
       },
     ],
-    type: 'suggestion',
   },
   defaultOptions: [
     {
@@ -124,10 +157,7 @@ export default util.createRule<[Options], MessageIds>({
             annotationNode = param.parameter;
 
             // Check TS parameter property with default value like `constructor(private param: string = 'something') {}`
-            if (
-              annotationNode &&
-              annotationNode.type === AST_NODE_TYPES.AssignmentPattern
-            ) {
+            if (annotationNode.type === AST_NODE_TYPES.AssignmentPattern) {
               annotationNode = annotationNode.left;
             }
 
@@ -137,7 +167,7 @@ export default util.createRule<[Options], MessageIds>({
             break;
         }
 
-        if (annotationNode !== undefined && !annotationNode.typeAnnotation) {
+        if (!annotationNode.typeAnnotation) {
           report(param, getNodeName(param));
         }
       }
@@ -175,7 +205,7 @@ export default util.createRule<[Options], MessageIds>({
       ...(arrayDestructuring && {
         ArrayPattern(node): void {
           if (
-            node.parent?.type === AST_NODE_TYPES.RestElement &&
+            node.parent.type === AST_NODE_TYPES.RestElement &&
             node.parent.typeAnnotation
           ) {
             return;
@@ -185,7 +215,7 @@ export default util.createRule<[Options], MessageIds>({
             !node.typeAnnotation &&
             !isForOfStatementContext(node) &&
             !isAncestorHasTypeAnnotation(node) &&
-            node.parent?.type !== AST_NODE_TYPES.AssignmentExpression
+            node.parent.type !== AST_NODE_TYPES.AssignmentExpression
           ) {
             report(node);
           }

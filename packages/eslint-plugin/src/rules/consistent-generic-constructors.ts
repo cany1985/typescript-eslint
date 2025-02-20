@@ -1,10 +1,11 @@
 import type { TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-import { createRule } from '../util';
+import { createRule, nullThrows, NullThrowsReasons } from '../util';
 
-type MessageIds = 'preferConstructor' | 'preferTypeAnnotation';
-type Options = ['constructor' | 'type-annotation'];
+export type MessageIds = 'preferConstructor' | 'preferTypeAnnotation';
+export type Options = ['constructor' | 'type-annotation'];
 
 export default createRule<Options, MessageIds>({
   name: 'consistent-generic-constructors',
@@ -15,38 +16,44 @@ export default createRule<Options, MessageIds>({
         'Enforce specifying generic type arguments on type annotation or constructor name of a constructor call',
       recommended: 'stylistic',
     },
+    fixable: 'code',
     messages: {
-      preferTypeAnnotation:
-        'The generic type arguments should be specified as part of the type annotation.',
       preferConstructor:
         'The generic type arguments should be specified as part of the constructor type arguments.',
+      preferTypeAnnotation:
+        'The generic type arguments should be specified as part of the type annotation.',
     },
-    fixable: 'code',
     schema: [
       {
         type: 'string',
+        description: 'Which constructor call syntax to prefer.',
         enum: ['type-annotation', 'constructor'],
       },
     ],
   },
   defaultOptions: ['constructor'],
   create(context, [mode]) {
-    const sourceCode = context.getSourceCode();
     return {
-      'VariableDeclarator,PropertyDefinition,:matches(FunctionDeclaration,FunctionExpression) > AssignmentPattern'(
+      'VariableDeclarator,PropertyDefinition,AccessorProperty,:matches(FunctionDeclaration,FunctionExpression) > AssignmentPattern'(
         node:
+          | TSESTree.AccessorProperty
           | TSESTree.AssignmentPattern
           | TSESTree.PropertyDefinition
           | TSESTree.VariableDeclarator,
       ): void {
         function getLHSRHS(): [
-          TSESTree.BindingName | TSESTree.PropertyDefinition,
+          (
+            | TSESTree.AccessorProperty
+            | TSESTree.BindingName
+            | TSESTree.PropertyDefinition
+          ),
           TSESTree.Expression | null,
         ] {
           switch (node.type) {
             case AST_NODE_TYPES.VariableDeclarator:
               return [node.id, node.init];
             case AST_NODE_TYPES.PropertyDefinition:
+            case AST_NODE_TYPES.AccessorProperty:
               return [node, node.value];
             case AST_NODE_TYPES.AssignmentPattern:
               return [node.left, node.right];
@@ -76,9 +83,10 @@ export default createRule<Options, MessageIds>({
         }
         if (mode === 'type-annotation') {
           if (!lhs && rhs.typeArguments) {
-            const { typeArguments, callee } = rhs;
+            const { callee, typeArguments } = rhs;
             const typeAnnotation =
-              sourceCode.getText(callee) + sourceCode.getText(typeArguments);
+              context.sourceCode.getText(callee) +
+              context.sourceCode.getText(typeArguments);
             context.report({
               node,
               messageId: 'preferTypeAnnotation',
@@ -86,7 +94,10 @@ export default createRule<Options, MessageIds>({
                 function getIDToAttachAnnotation():
                   | TSESTree.Node
                   | TSESTree.Token {
-                  if (node.type !== AST_NODE_TYPES.PropertyDefinition) {
+                  if (
+                    node.type !== AST_NODE_TYPES.PropertyDefinition &&
+                    node.type !== AST_NODE_TYPES.AccessorProperty
+                  ) {
                     return lhsName;
                   }
                   if (!node.computed) {
@@ -94,13 +105,16 @@ export default createRule<Options, MessageIds>({
                   }
                   // If the property's computed, we have to attach the
                   // annotation after the square bracket, not the enclosed expression
-                  return sourceCode.getTokenAfter(node.key)!;
+                  return nullThrows(
+                    context.sourceCode.getTokenAfter(node.key),
+                    NullThrowsReasons.MissingToken(']', 'key'),
+                  );
                 }
                 return [
                   fixer.remove(typeArguments),
                   fixer.insertTextAfter(
                     getIDToAttachAnnotation(),
-                    ': ' + typeAnnotation,
+                    `: ${typeAnnotation}`,
                   ),
                 ];
               },
@@ -108,37 +122,36 @@ export default createRule<Options, MessageIds>({
           }
           return;
         }
-        if (mode === 'constructor') {
-          if (lhs?.typeArguments && !rhs.typeArguments) {
-            const hasParens =
-              sourceCode.getTokenAfter(rhs.callee)?.value === '(';
-            const extraComments = new Set(
-              sourceCode.getCommentsInside(lhs.parent),
-            );
-            sourceCode
-              .getCommentsInside(lhs.typeArguments)
-              .forEach(c => extraComments.delete(c));
-            context.report({
-              node,
-              messageId: 'preferConstructor',
-              *fix(fixer) {
-                yield fixer.remove(lhs.parent);
-                for (const comment of extraComments) {
-                  yield fixer.insertTextAfter(
-                    rhs.callee,
-                    sourceCode.getText(comment),
-                  );
-                }
+
+        if (lhs?.typeArguments && !rhs.typeArguments) {
+          const hasParens =
+            context.sourceCode.getTokenAfter(rhs.callee)?.value === '(';
+          const extraComments = new Set(
+            context.sourceCode.getCommentsInside(lhs.parent),
+          );
+          context.sourceCode
+            .getCommentsInside(lhs.typeArguments)
+            .forEach(c => extraComments.delete(c));
+          context.report({
+            node,
+            messageId: 'preferConstructor',
+            *fix(fixer) {
+              yield fixer.remove(lhs.parent);
+              for (const comment of extraComments) {
                 yield fixer.insertTextAfter(
                   rhs.callee,
-                  sourceCode.getText(lhs.typeArguments),
+                  context.sourceCode.getText(comment),
                 );
-                if (!hasParens) {
-                  yield fixer.insertTextAfter(rhs.callee, '()');
-                }
-              },
-            });
-          }
+              }
+              yield fixer.insertTextAfter(
+                rhs.callee,
+                context.sourceCode.getText(lhs.typeArguments),
+              );
+              if (!hasParens) {
+                yield fixer.insertTextAfter(rhs.callee, '()');
+              }
+            },
+          });
         }
       },
     };

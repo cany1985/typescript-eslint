@@ -1,46 +1,51 @@
+import type Monaco from 'monaco-editor';
+
 import Link from '@docusaurus/Link';
 import IconExternalLink from '@theme/Icon/ExternalLink';
 import clsx from 'clsx';
-import type Monaco from 'monaco-editor';
 import React, { useEffect, useState } from 'react';
 
-import styles from './ErrorsViewer.module.css';
 import type { AlertBlockProps } from './layout/AlertBlock';
-import AlertBlock from './layout/AlertBlock';
 import type { ErrorGroup, ErrorItem } from './types';
+
+import styles from './ErrorsViewer.module.css';
+import AlertBlock from './layout/AlertBlock';
 
 export interface ErrorsViewerProps {
   readonly value?: ErrorGroup[];
 }
 
 export interface ErrorViewerProps {
-  readonly value: Error;
   readonly title: string;
   readonly type: AlertBlockProps['type'];
+  readonly value: Error;
 }
 
 export interface ErrorBlockProps {
+  readonly isLocked: boolean;
   readonly item: ErrorItem;
   readonly setIsLocked: (value: boolean) => void;
-  readonly isLocked: boolean;
 }
 
 export interface FixButtonProps {
+  readonly children?: React.ReactNode;
+  readonly disabled: boolean;
   readonly fix: () => void;
   readonly setIsLocked: (value: boolean) => void;
-  readonly disabled: boolean;
 }
 
 function severityClass(
   severity: Monaco.MarkerSeverity,
 ): AlertBlockProps['type'] {
   switch (severity) {
-    case 8:
-      return 'danger';
-    case 4:
-      return 'warning';
+    /* eslint-disable @typescript-eslint/no-unsafe-enum-comparison -- Monaco is imported as a type */
     case 2:
       return 'note';
+    case 4:
+      return 'warning';
+    case 8:
+      return 'danger';
+    /* eslint-enable @typescript-eslint/no-unsafe-enum-comparison */
   }
   return 'info';
 }
@@ -55,15 +60,15 @@ function FixButton(props: FixButtonProps): React.JSX.Element {
         props.setIsLocked(true);
       }}
     >
-      fix
+      {props.children}
     </button>
   );
 }
 
 function ErrorBlock({
+  isLocked,
   item,
   setIsLocked,
-  isLocked,
 }: ErrorBlockProps): React.JSX.Element {
   return (
     <AlertBlock type={severityClass(item.severity)}>
@@ -76,22 +81,26 @@ function ErrorBlock({
             disabled={isLocked}
             fix={item.fixer.fix}
             setIsLocked={setIsLocked}
-          />
+          >
+            apply fix
+          </FixButton>
         )}
       </div>
       {item.suggestions.length > 0 && (
         <div>
           {item.suggestions.map((fixer, index) => (
             <div
-              key={index}
               className={clsx(styles.fixerContainer, styles.fixer)}
+              key={index}
             >
               <span>&gt; {fixer.message}</span>
               <FixButton
                 disabled={isLocked}
                 fix={fixer.fix}
                 setIsLocked={setIsLocked}
-              />
+              >
+                apply suggestion
+              </FixButton>
             </div>
           ))}
         </div>
@@ -101,9 +110,9 @@ function ErrorBlock({
 }
 
 export function ErrorViewer({
-  value,
   title,
   type,
+  value,
 }: ErrorViewerProps): React.JSX.Element {
   return (
     <div className={styles.list}>
@@ -113,7 +122,7 @@ export function ErrorViewer({
             <h4>{title}</h4>
           </div>
           <pre className={styles.errorPre}>
-            {type === 'danger' ? value?.stack : value.message}
+            {type === 'danger' ? value.stack : value.message}
           </pre>
         </AlertBlock>
       </div>
@@ -131,7 +140,7 @@ export function ErrorsViewer({ value }: ErrorsViewerProps): React.JSX.Element {
   return (
     <div className={styles.list}>
       {value?.length ? (
-        value.map(({ group, uri, items }) => {
+        value.map(({ group, items, uri }) => {
           return (
             <div className="margin-top--md" key={group}>
               <h4>
@@ -140,7 +149,7 @@ export function ErrorsViewer({ value }: ErrorsViewerProps): React.JSX.Element {
                   <>
                     {' - '}
                     <Link href={uri} target="_blank">
-                      docs <IconExternalLink width={13.5} height={13.5} />
+                      docs <IconExternalLink height={13.5} width={13.5} />
                     </Link>
                   </>
                 )}
@@ -149,8 +158,8 @@ export function ErrorsViewer({ value }: ErrorsViewerProps): React.JSX.Element {
                 <div className="margin-bottom--sm" key={index}>
                   <ErrorBlock
                     isLocked={isLocked}
-                    setIsLocked={setIsLocked}
                     item={item}
+                    setIsLocked={setIsLocked}
                   />
                 </div>
               ))}

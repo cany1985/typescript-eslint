@@ -1,12 +1,12 @@
-name: '📝 Documentation Request'
-description: 'Request a change in documentation'
+name: '📝 Documentation'
+description: 'Adding or improving in docs'
 title: 'Docs: <a short description of my proposal>'
 labels:
   - documentation
   - triage
 body:
   - type: checkboxes
-    id: sanity-checks
+    id: preliminary-checks
     attributes:
       label: Before You File a Documentation Request Please Confirm You Have Done The Following...
       options:
@@ -30,3 +30,7 @@ body:
       description: Which URL(s) on the website does this CRUD?
     validations:
       required: true
+  - type: textarea
+    attributes:
+      label: Additional Info
+      description: Any additional info you'd like to provide.

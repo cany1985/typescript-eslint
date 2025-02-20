@@ -1,7 +1,9 @@
 import type { ParserOptions } from '@babel/core';
+
 import { parse } from '@babel/eslint-parser';
 
 import type { Fixture, ParserResponse } from './parser-types';
+
 import { ParserResponseType } from './parser-types';
 
 const PLUGINS: NonNullable<ParserOptions['plugins']> = [
@@ -10,6 +12,7 @@ const PLUGINS: NonNullable<ParserOptions['plugins']> = [
   // 'classFeatures',
   'classProperties',
   'decorators-legacy',
+  'explicitResourceManagement',
   'importAssertions',
   'typescript',
 ];
@@ -34,18 +37,18 @@ export function parseBabel(fixture: Fixture, contents: string): ParserResponse {
       requireConfigFile: false,
       sourceType: 'unambiguous',
     });
-    const { tokens: _, comments: __, ...program } = result;
+    const { comments: __, tokens: _, ...program } = result;
 
     return {
-      type: ParserResponseType.NoError,
       ast: program,
       error: 'NO ERROR',
       tokens: result.tokens,
+      type: ParserResponseType.NoError,
     };
   } catch (error: unknown) {
     return {
-      type: ParserResponseType.Error,
       error,
+      type: ParserResponseType.Error,
     };
   }
 }

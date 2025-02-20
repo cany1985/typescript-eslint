@@ -3,15 +3,19 @@ import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
 import rule from '../../src/rules/no-restricted-imports';
 
-const ruleTester = new RuleTester({
-  parser: '@typescript-eslint/parser',
-});
+const ruleTester = new RuleTester();
 
 ruleTester.run('no-restricted-imports', rule, {
   valid: [
     "import foo from 'foo';",
+    "import foo = require('foo');",
+    "import 'foo';",
     {
       code: "import foo from 'foo';",
+      options: ['import1', 'import2'],
+    },
+    {
+      code: "import foo = require('foo');",
       options: ['import1', 'import2'],
     },
     {
@@ -25,6 +29,10 @@ ruleTester.run('no-restricted-imports', rule, {
     {
       code: "export { foo } from 'foo';",
       options: [{ paths: ['import1', 'import2'] }],
+    },
+    {
+      code: "import 'foo';",
+      options: ['import1', 'import2'],
     },
     {
       code: "import foo from 'foo';",
@@ -50,12 +58,12 @@ ruleTester.run('no-restricted-imports', rule, {
         {
           paths: [
             {
-              name: 'import-foo',
               message: 'Please use import-bar instead.',
+              name: 'import-foo',
             },
             {
-              name: 'import-baz',
               message: 'Please use import-quux instead.',
+              name: 'import-baz',
             },
           ],
         },
@@ -67,12 +75,12 @@ ruleTester.run('no-restricted-imports', rule, {
         {
           paths: [
             {
-              name: 'import-foo',
               message: 'Please use import-bar instead.',
+              name: 'import-foo',
             },
             {
-              name: 'import-baz',
               message: 'Please use import-quux instead.',
+              name: 'import-baz',
             },
           ],
         },
@@ -84,9 +92,9 @@ ruleTester.run('no-restricted-imports', rule, {
         {
           paths: [
             {
-              name: 'import-foo',
               importNames: ['Bar'],
               message: 'Please use Bar from /import-bar/baz/ instead.',
+              name: 'import-foo',
             },
           ],
         },
@@ -98,9 +106,9 @@ ruleTester.run('no-restricted-imports', rule, {
         {
           paths: [
             {
-              name: 'import-foo',
               importNames: ['Bar'],
               message: 'Please use Bar from /import-bar/baz/ instead.',
+              name: 'import-foo',
             },
           ],
         },
@@ -137,6 +145,20 @@ ruleTester.run('no-restricted-imports', rule, {
               group: ['import2/*', '!import2/good'],
               message:
                 'import2 is deprecated, except the modules in import2/good.',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      code: "import foo = require('foo');",
+      options: [
+        {
+          paths: [
+            {
+              importNames: ['foo'],
+              message: 'Please use Bar from /import-bar/baz/ instead.',
+              name: 'foo',
             },
           ],
         },
@@ -148,9 +170,23 @@ ruleTester.run('no-restricted-imports', rule, {
         {
           paths: [
             {
-              name: 'import-foo',
-              message: 'Please use import-bar instead.',
               allowTypeImports: true,
+              message: 'Please use import-bar instead.',
+              name: 'import-foo',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      code: "import type _ = require('import-foo');",
+      options: [
+        {
+          paths: [
+            {
+              allowTypeImports: true,
+              message: 'Please use import-bar instead.',
+              name: 'import-foo',
             },
           ],
         },
@@ -162,10 +198,10 @@ ruleTester.run('no-restricted-imports', rule, {
         {
           paths: [
             {
-              name: 'import-foo',
+              allowTypeImports: true,
               importNames: ['Bar'],
               message: 'Please use Bar from /import-bar/baz/ instead.',
-              allowTypeImports: true,
+              name: 'import-foo',
             },
           ],
         },
@@ -177,10 +213,10 @@ ruleTester.run('no-restricted-imports', rule, {
         {
           paths: [
             {
-              name: 'import-foo',
+              allowTypeImports: true,
               importNames: ['Bar'],
               message: 'Please use Bar from /import-bar/baz/ instead.',
-              allowTypeImports: true,
+              name: 'import-foo',
             },
           ],
         },
@@ -192,9 +228,9 @@ ruleTester.run('no-restricted-imports', rule, {
         {
           patterns: [
             {
+              allowTypeImports: true,
               group: ['import1/private/*'],
               message: 'usage of import1 private modules not allowed.',
-              allowTypeImports: true,
             },
           ],
         },
@@ -206,9 +242,9 @@ ruleTester.run('no-restricted-imports', rule, {
         {
           patterns: [
             {
+              allowTypeImports: true,
               group: ['import1/private/*'],
               message: 'usage of import1 private modules not allowed.',
-              allowTypeImports: true,
             },
           ],
         },
@@ -224,9 +260,9 @@ ruleTester.run('no-restricted-imports', rule, {
         {
           patterns: [
             {
+              allowTypeImports: true,
               group: ['fail'],
               message: "Please do not load from 'fail'.",
-              allowTypeImports: true,
             },
           ],
         },
@@ -241,14 +277,51 @@ import type { foo } from 'import2/private/bar';
         {
           patterns: [
             {
+              allowTypeImports: true,
               group: ['import1/private/*'],
               message: 'usage of import1 private modules not allowed.',
-              allowTypeImports: true,
             },
             {
+              allowTypeImports: true,
               group: ['import2/private/*'],
               message: 'usage of import2 private modules not allowed.',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      code: `
+import type { foo } from 'import1/private/bar';
+import type { foo } from 'import2/private/bar';
+      `,
+      options: [
+        {
+          patterns: [
+            {
               allowTypeImports: true,
+              message: 'usage of import1 private modules not allowed.',
+              regex: 'import1/.*',
+            },
+            {
+              allowTypeImports: true,
+              message: 'usage of import2 private modules not allowed.',
+              regex: 'import2/.*',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      code: "import { foo } from 'import1/private';",
+      options: [
+        {
+          patterns: [
+            {
+              allowTypeImports: true,
+              caseSensitive: true,
+              message: 'usage of import1 private modules not allowed.',
+              regex: 'import1/[A-Z]+',
             },
           ],
         },
@@ -260,10 +333,10 @@ import type { foo } from 'import2/private/bar';
         {
           paths: [
             {
-              name: 'import-foo',
+              allowTypeImports: true,
               importNames: ['Bar'],
               message: 'Please use Bar from /import-bar/baz/ instead.',
-              allowTypeImports: true,
+              name: 'import-foo',
             },
           ],
         },
@@ -275,12 +348,41 @@ import type { foo } from 'import2/private/bar';
         {
           paths: [
             {
-              name: 'import-foo',
+              allowTypeImports: true,
               importNames: ['Bar'],
               message: 'Please use Bar from /import-bar/baz/ instead.',
-              allowTypeImports: true,
+              name: 'import-foo',
             },
           ],
+        },
+      ],
+    },
+    {
+      code: "import foo from 'foo';",
+      options: [],
+    },
+    {
+      code: "import foo from 'foo';",
+      options: [
+        {
+          paths: [],
+        },
+      ],
+    },
+    {
+      code: "import foo from 'foo';",
+      options: [
+        {
+          patterns: [],
+        },
+      ],
+    },
+    {
+      code: "import foo from 'foo';",
+      options: [
+        {
+          paths: [],
+          patterns: [],
         },
       ],
     },
@@ -288,186 +390,177 @@ import type { foo } from 'import2/private/bar';
   invalid: [
     {
       code: "import foo from 'import1';",
-      options: ['import1', 'import2'],
       errors: [
         {
           messageId: 'path',
           type: AST_NODE_TYPES.ImportDeclaration,
         },
       ],
+      options: ['import1', 'import2'],
+    },
+    {
+      code: "import foo = require('import1');",
+      errors: [
+        {
+          messageId: 'path',
+        },
+      ],
+      options: ['import1', 'import2'],
     },
     {
       code: "export { foo } from 'import1';",
-      options: ['import1', 'import2'],
       errors: [
         {
           messageId: 'path',
           type: AST_NODE_TYPES.ExportNamedDeclaration,
         },
       ],
+      options: ['import1', 'import2'],
     },
     {
       code: "import foo from 'import1';",
-      options: [{ paths: ['import1', 'import2'] }],
       errors: [
         {
           messageId: 'path',
           type: AST_NODE_TYPES.ImportDeclaration,
         },
       ],
+      options: [{ paths: ['import1', 'import2'] }],
     },
     {
       code: "export { foo } from 'import1';",
-      options: [{ paths: ['import1', 'import2'] }],
       errors: [
         {
           messageId: 'path',
           type: AST_NODE_TYPES.ExportNamedDeclaration,
         },
       ],
+      options: [{ paths: ['import1', 'import2'] }],
     },
     {
       code: "import foo from 'import1/private/foo';",
-      options: [
-        {
-          paths: ['import1', 'import2'],
-          patterns: ['import1/private/*', 'import2/*', '!import2/good'],
-        },
-      ],
       errors: [
         {
           messageId: 'patterns',
           type: AST_NODE_TYPES.ImportDeclaration,
+        },
+      ],
+      options: [
+        {
+          paths: ['import1', 'import2'],
+          patterns: ['import1/private/*', 'import2/*', '!import2/good'],
         },
       ],
     },
     {
       code: "export { foo } from 'import1/private/foo';",
-      options: [
-        {
-          paths: ['import1', 'import2'],
-          patterns: ['import1/private/*', 'import2/*', '!import2/good'],
-        },
-      ],
       errors: [
         {
           messageId: 'patterns',
           type: AST_NODE_TYPES.ExportNamedDeclaration,
         },
       ],
+      options: [
+        {
+          paths: ['import1', 'import2'],
+          patterns: ['import1/private/*', 'import2/*', '!import2/good'],
+        },
+      ],
     },
     {
       code: "import foo from 'import-foo';",
-      options: [
-        {
-          paths: [
-            {
-              name: 'import-foo',
-              message: 'Please use import-bar instead.',
-            },
-            {
-              name: 'import-baz',
-              message: 'Please use import-quux instead.',
-            },
-          ],
-        },
-      ],
       errors: [
         {
           messageId: 'pathWithCustomMessage',
           type: AST_NODE_TYPES.ImportDeclaration,
+        },
+      ],
+      options: [
+        {
+          paths: [
+            {
+              message: 'Please use import-bar instead.',
+              name: 'import-foo',
+            },
+            {
+              message: 'Please use import-quux instead.',
+              name: 'import-baz',
+            },
+          ],
         },
       ],
     },
     {
       code: "export { foo } from 'import-foo';",
-      options: [
-        {
-          paths: [
-            {
-              name: 'import-foo',
-              message: 'Please use import-bar instead.',
-            },
-            {
-              name: 'import-baz',
-              message: 'Please use import-quux instead.',
-            },
-          ],
-        },
-      ],
       errors: [
         {
           messageId: 'pathWithCustomMessage',
           type: AST_NODE_TYPES.ExportNamedDeclaration,
         },
       ],
-    },
-    {
-      code: "import { Bar } from 'import-foo';",
       options: [
         {
           paths: [
             {
+              message: 'Please use import-bar instead.',
               name: 'import-foo',
-              importNames: ['Bar'],
-              message: 'Please use Bar from /import-bar/baz/ instead.',
+            },
+            {
+              message: 'Please use import-quux instead.',
+              name: 'import-baz',
             },
           ],
         },
       ],
+    },
+    {
+      code: "import { Bar } from 'import-foo';",
       errors: [
         {
           messageId: 'importNameWithCustomMessage',
           type: AST_NODE_TYPES.ImportDeclaration,
         },
       ],
-    },
-    {
-      code: "export { Bar } from 'import-foo';",
       options: [
         {
           paths: [
             {
-              name: 'import-foo',
               importNames: ['Bar'],
               message: 'Please use Bar from /import-bar/baz/ instead.',
+              name: 'import-foo',
             },
           ],
         },
       ],
+    },
+    {
+      code: "export { Bar } from 'import-foo';",
       errors: [
         {
           messageId: 'importNameWithCustomMessage',
           type: AST_NODE_TYPES.ExportNamedDeclaration,
+        },
+      ],
+      options: [
+        {
+          paths: [
+            {
+              importNames: ['Bar'],
+              message: 'Please use Bar from /import-bar/baz/ instead.',
+              name: 'import-foo',
+            },
+          ],
         },
       ],
     },
     {
       code: "import foo from 'import1/private/foo';",
-      options: [
-        {
-          patterns: [
-            {
-              group: ['import1/private/*'],
-              message: 'usage of import1 private modules not allowed.',
-            },
-            {
-              group: ['import2/*', '!import2/good'],
-              message:
-                'import2 is deprecated, except the modules in import2/good.',
-            },
-          ],
-        },
-      ],
       errors: [
         {
           messageId: 'patternWithCustomMessage',
           type: AST_NODE_TYPES.ImportDeclaration,
         },
       ],
-    },
-    {
-      code: "export { foo } from 'import1/private/foo';",
       options: [
         {
           patterns: [
@@ -483,153 +576,256 @@ import type { foo } from 'import2/private/bar';
           ],
         },
       ],
+    },
+    {
+      code: "export { foo } from 'import1/private/foo';",
       errors: [
         {
           messageId: 'patternWithCustomMessage',
           type: AST_NODE_TYPES.ExportNamedDeclaration,
         },
       ],
+      options: [
+        {
+          patterns: [
+            {
+              group: ['import1/private/*'],
+              message: 'usage of import1 private modules not allowed.',
+            },
+            {
+              group: ['import2/*', '!import2/good'],
+              message:
+                'import2 is deprecated, except the modules in import2/good.',
+            },
+          ],
+        },
+      ],
     },
     {
-      code: "import foo from 'import-foo';",
+      code: "import 'import-foo';",
+      errors: [
+        {
+          messageId: 'path',
+          type: AST_NODE_TYPES.ImportDeclaration,
+        },
+      ],
       options: [
         {
           paths: [
             {
               name: 'import-foo',
-              message: 'Please use import-bar instead.',
-              allowTypeImports: true,
             },
           ],
         },
       ],
+    },
+    {
+      code: "import 'import-foo';",
+      errors: [
+        {
+          messageId: 'path',
+          type: AST_NODE_TYPES.ImportDeclaration,
+        },
+      ],
+      options: [
+        {
+          paths: [
+            {
+              allowTypeImports: true,
+              name: 'import-foo',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      code: "import foo from 'import-foo';",
       errors: [
         {
           messageId: 'pathWithCustomMessage',
           type: AST_NODE_TYPES.ImportDeclaration,
         },
       ],
-    },
-    {
-      code: "import { Bar } from 'import-foo';",
       options: [
         {
           paths: [
             {
-              name: 'import-foo',
-              importNames: ['Bar'],
-              message: 'Please use Bar from /import-bar/baz/ instead.',
               allowTypeImports: true,
+              message: 'Please use import-bar instead.',
+              name: 'import-foo',
             },
           ],
         },
       ],
+    },
+    {
+      code: "import foo = require('import-foo');",
+      errors: [
+        {
+          messageId: 'pathWithCustomMessage',
+        },
+      ],
+      options: [
+        {
+          paths: [
+            {
+              allowTypeImports: true,
+              message: 'Please use import-bar instead.',
+              name: 'import-foo',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      code: "import { Bar } from 'import-foo';",
       errors: [
         {
           messageId: 'importNameWithCustomMessage',
           type: AST_NODE_TYPES.ImportDeclaration,
+        },
+      ],
+      options: [
+        {
+          paths: [
+            {
+              allowTypeImports: true,
+              importNames: ['Bar'],
+              message: 'Please use Bar from /import-bar/baz/ instead.',
+              name: 'import-foo',
+            },
+          ],
         },
       ],
     },
     {
       code: "export { Bar } from 'import-foo';",
-      options: [
-        {
-          paths: [
-            {
-              name: 'import-foo',
-              importNames: ['Bar'],
-              message: 'Please use Bar from /import-bar/baz/ instead.',
-              allowTypeImports: true,
-            },
-          ],
-        },
-      ],
       errors: [
         {
           messageId: 'importNameWithCustomMessage',
           type: AST_NODE_TYPES.ExportNamedDeclaration,
         },
       ],
-    },
-    {
-      code: "import foo from 'import1/private/bar';",
       options: [
         {
-          patterns: [
+          paths: [
             {
-              group: ['import1/private/*'],
-              message: 'usage of import1 private modules not allowed.',
               allowTypeImports: true,
+              importNames: ['Bar'],
+              message: 'Please use Bar from /import-bar/baz/ instead.',
+              name: 'import-foo',
             },
           ],
         },
       ],
+    },
+    {
+      code: "import foo from 'import1/private/bar';",
       errors: [
         {
           messageId: 'patternWithCustomMessage',
           type: AST_NODE_TYPES.ImportDeclaration,
         },
       ],
-    },
-    {
-      code: "export { foo } from 'import1/private/bar';",
       options: [
         {
           patterns: [
             {
+              allowTypeImports: true,
               group: ['import1/private/*'],
               message: 'usage of import1 private modules not allowed.',
-              allowTypeImports: true,
             },
           ],
         },
       ],
+    },
+    {
+      code: "export { foo } from 'import1/private/bar';",
       errors: [
         {
           messageId: 'patternWithCustomMessage',
           type: AST_NODE_TYPES.ExportNamedDeclaration,
         },
       ],
+      options: [
+        {
+          patterns: [
+            {
+              allowTypeImports: true,
+              group: ['import1/private/*'],
+              message: 'usage of import1 private modules not allowed.',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      code: "export { foo } from 'import1/private/bar';",
+      errors: [
+        {
+          messageId: 'patternWithCustomMessage',
+          type: AST_NODE_TYPES.ExportNamedDeclaration,
+        },
+      ],
+      options: [
+        {
+          patterns: [
+            {
+              allowTypeImports: true,
+              message: 'usage of import1 private modules not allowed.',
+              regex: 'import1/.*',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      code: "import { foo } from 'import1/private-package';",
+      errors: [
+        {
+          messageId: 'patternWithCustomMessage',
+          type: AST_NODE_TYPES.ImportDeclaration,
+        },
+      ],
+      options: [
+        {
+          patterns: [
+            {
+              allowTypeImports: true,
+              caseSensitive: true,
+              message: 'usage of import1 private modules not allowed.',
+              regex: 'import1/private-[a-z]*',
+            },
+          ],
+        },
+      ],
     },
     {
       code: "export * from 'import1';",
-      options: ['import1'],
       errors: [
         {
           messageId: 'path',
           type: AST_NODE_TYPES.ExportAllDeclaration,
         },
       ],
+      options: ['import1'],
     },
     {
       code: "import type { InvalidTestCase } from '@typescript-eslint/utils/dist/ts-eslint';",
-      options: [
-        {
-          patterns: ['@typescript-eslint/utils/dist/*'],
-        },
-      ],
       errors: [
         {
           messageId: 'patterns',
           type: AST_NODE_TYPES.ImportDeclaration,
         },
       ],
+      options: [
+        {
+          patterns: ['@typescript-eslint/utils/dist/*'],
+        },
+      ],
     },
     {
       code: "import { Bar, type Baz } from 'import-foo';",
-      options: [
-        {
-          paths: [
-            {
-              name: 'import-foo',
-              importNames: ['Bar', 'Baz'],
-              message: 'Please use Bar and Baz from /import-bar/baz/ instead.',
-              allowTypeImports: true,
-            },
-          ],
-        },
-      ],
       errors: [
         {
           messageId: 'importNameWithCustomMessage',
@@ -638,23 +834,23 @@ import type { foo } from 'import2/private/bar';
         {
           messageId: 'importNameWithCustomMessage',
           type: AST_NODE_TYPES.ImportDeclaration,
+        },
+      ],
+      options: [
+        {
+          paths: [
+            {
+              allowTypeImports: true,
+              importNames: ['Bar', 'Baz'],
+              message: 'Please use Bar and Baz from /import-bar/baz/ instead.',
+              name: 'import-foo',
+            },
+          ],
         },
       ],
     },
     {
       code: "export { Bar, type Baz } from 'import-foo';",
-      options: [
-        {
-          paths: [
-            {
-              name: 'import-foo',
-              importNames: ['Bar', 'Baz'],
-              message: 'Please use Bar and Baz from /import-bar/baz/ instead.',
-              allowTypeImports: true,
-            },
-          ],
-        },
-      ],
       errors: [
         {
           messageId: 'importNameWithCustomMessage',
@@ -663,6 +859,18 @@ import type { foo } from 'import2/private/bar';
         {
           messageId: 'importNameWithCustomMessage',
           type: AST_NODE_TYPES.ExportNamedDeclaration,
+        },
+      ],
+      options: [
+        {
+          paths: [
+            {
+              allowTypeImports: true,
+              importNames: ['Bar', 'Baz'],
+              message: 'Please use Bar and Baz from /import-bar/baz/ instead.',
+              name: 'import-foo',
+            },
+          ],
         },
       ],
     },

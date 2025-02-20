@@ -7,11 +7,11 @@ import { getFixturesRootDir } from '../RuleTester';
 const rootPath = getFixturesRootDir();
 
 const ruleTester = new RuleTester({
-  parser: '@typescript-eslint/parser',
-  parserOptions: {
-    sourceType: 'module',
-    tsconfigRootDir: rootPath,
-    project: './tsconfig.json',
+  languageOptions: {
+    parserOptions: {
+      project: './tsconfig.json',
+      tsconfigRootDir: rootPath,
+    },
   },
 });
 
@@ -26,6 +26,12 @@ namespace X {
 
 namespace Y {
   export const x: X.T = 3;
+}
+    `,
+    `
+namespace A {}
+namespace A.B {
+  export type Z = 1;
 }
     `,
     `
@@ -51,6 +57,30 @@ namespace X {
     `
 namespace X {
   const z = X.y;
+}
+    `,
+    `
+enum Foo {
+  One,
+}
+
+namespace Foo {
+  export function bar() {
+    return Foo.One;
+  }
+}
+    `,
+    `
+namespace Foo {
+  export enum Foo {
+    One,
+  }
+}
+
+namespace Foo {
+  export function bar() {
+    return Foo.One;
+  }
 }
     `,
   ],
@@ -140,6 +170,30 @@ namespace A {
   export namespace B {
     export type T = number;
     const x: T = 3;
+  }
+}
+      `,
+    },
+    {
+      code: `
+namespace A {
+  export namespace B.C {
+    export type D = number;
+    const x: A.B.C.D = 3;
+  }
+}
+      `,
+      errors: [
+        {
+          messageId,
+          type: AST_NODE_TYPES.TSQualifiedName,
+        },
+      ],
+      output: `
+namespace A {
+  export namespace B.C {
+    export type D = number;
+    const x: D = 3;
   }
 }
       `,

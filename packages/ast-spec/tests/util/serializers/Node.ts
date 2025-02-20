@@ -1,9 +1,12 @@
 import type { NewPlugin } from 'pretty-format';
 
 import type * as TSESTree from '../../../src';
+
 import { AST_NODE_TYPES } from '../../../src';
 
-function sortKeys(node: TSESTree.Node): (keyof typeof node)[] {
+function sortKeys<Node extends TSESTree.Node>(
+  node: Node,
+): (keyof typeof node)[] {
   const keySet = new Set(Object.keys(node));
 
   // type place as first key
@@ -19,7 +22,7 @@ function sortKeys(node: TSESTree.Node): (keyof typeof node)[] {
     keySet.delete('interpreter');
   }
 
-  return Array.from(keySet).sort((a, b) =>
+  return [...keySet].sort((a, b) =>
     a.localeCompare(b),
   ) as (keyof typeof node)[];
 }
@@ -35,11 +38,15 @@ function hasValidType(type: unknown): type is string {
   return typeof type === 'string';
 }
 
-const serializer: NewPlugin = {
-  test(val: unknown) {
-    return isObject(val) && hasValidType(val.type);
-  },
-  serialize(node: TSESTree.Node, config, indentation, depth, refs, printer) {
+export const serializer: NewPlugin = {
+  serialize(
+    node: Record<string, unknown> & TSESTree.Node,
+    config,
+    indentation,
+    depth,
+    refs,
+    printer,
+  ) {
     const keys = sortKeys(node);
     const type = node.type;
     const loc = node.loc;
@@ -56,6 +63,7 @@ const serializer: NewPlugin = {
 
     for (const key of keys) {
       const value = node[key];
+      // eslint-disable-next-line @typescript-eslint/internal/eqeq-nullish -- intentional strict equality
       if (value === undefined) {
         continue;
       }
@@ -79,6 +87,7 @@ const serializer: NewPlugin = {
 
     return outputLines.join('\n');
   },
+  test(val: unknown) {
+    return isObject(val) && hasValidType(val.type);
+  },
 };
-
-export { serializer };

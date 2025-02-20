@@ -1,19 +1,31 @@
+import type { RulesMeta } from '@site/rulesMeta';
+import type { RuleRecommendation } from '@typescript-eslint/utils/ts-eslint';
+
 import Link from '@docusaurus/Link';
 import { useHistory } from '@docusaurus/router';
-import type { RulesMeta } from '@site/rulesMeta';
 import { useRulesMeta } from '@site/src/hooks/useRulesMeta';
 import clsx from 'clsx';
 import React, { useMemo } from 'react';
 
+import type { HistorySelector } from '../../hooks/useHistorySelector';
+
+import { useHistorySelector } from '../../hooks/useHistorySelector';
 import {
-  type HistorySelector,
-  useHistorySelector,
-} from '../../hooks/useHistorySelector';
+  CONFIG_EMOJI,
+  DEPRECATED_RULE_EMOJI,
+  EXTENSION_RULE_EMOJI,
+  FIXABLE_EMOJI,
+  RECOMMENDED_CONFIG_EMOJI,
+  STRICT_CONFIG_EMOJI,
+  STYLISTIC_CONFIG_EMOJI,
+  SUGGESTIONS_EMOJI,
+  TYPE_INFORMATION_EMOJI,
+} from '../constants';
 import styles from './styles.module.css';
 
 function interpolateCode(
   text: string,
-): (React.JSX.Element | string)[] | string {
+): string | (string | React.JSX.Element)[] {
   const fragments = text.split(/`(.*?)`/);
   if (fragments.length === 1) {
     return text;
@@ -21,16 +33,24 @@ function interpolateCode(
   return fragments.map((v, i) => (i % 2 === 0 ? v : <code key={i}>{v}</code>));
 }
 
+function getActualRecommended({
+  docs,
+}: RulesMeta[number]): RuleRecommendation | undefined {
+  const recommended = docs.recommended;
+  return typeof recommended === 'object' ? 'recommended' : recommended;
+}
+
 function RuleRow({
   rule,
 }: {
   rule: RulesMeta[number];
 }): React.JSX.Element | null {
-  if (!rule.docs?.url) {
+  if (!rule.docs.url) {
     return null;
   }
-  const { fixable, hasSuggestions } = rule;
-  const { recommended, requiresTypeChecking } = rule.docs;
+  const { deprecated, fixable, hasSuggestions } = rule;
+  const { extendsBaseRule, requiresTypeChecking } = rule.docs;
+  const actualRecommended = getActualRecommended(rule);
   return (
     <tr>
       <td>
@@ -40,18 +60,18 @@ function RuleRow({
         <br />
         {interpolateCode(rule.docs.description)}
       </td>
-      <td className={styles.attrCol} title={recommended}>
+      <td className={styles.attrCol} title={actualRecommended}>
         {(() => {
-          switch (recommended) {
+          switch (actualRecommended) {
             case 'recommended':
-              return '✅';
+              return RECOMMENDED_CONFIG_EMOJI;
             case 'strict':
-              return '🔒';
+              return STRICT_CONFIG_EMOJI;
             case 'stylistic':
-              return '🎨';
+              return STYLISTIC_CONFIG_EMOJI;
             default:
-              // for some reason the current version of babel loader won't elide this correctly
-              // recommended satisfies undefined;
+              // for some reason the current version of babel loader won't elide
+              // this correctly recommended satisfies undefined;
               return '';
           }
         })()}
@@ -62,20 +82,33 @@ function RuleRow({
           fixable && hasSuggestions
             ? 'fixable and has suggestions'
             : fixable
-            ? 'fixable'
-            : hasSuggestions
-            ? 'has suggestions'
-            : undefined
+              ? 'fixable'
+              : hasSuggestions
+                ? 'has suggestions'
+                : undefined
         }
       >
-        {fixable ? '🔧\n' : '\n'}
-        {hasSuggestions ? '💡' : ''}
+        {fixable ? FIXABLE_EMOJI : ''}
+        {fixable && hasSuggestions ? <br /> : ''}
+        {hasSuggestions ? SUGGESTIONS_EMOJI : ''}
       </td>
       <td
         className={styles.attrCol}
         title={requiresTypeChecking ? 'requires type information' : undefined}
       >
-        {requiresTypeChecking ? '💭' : ''}
+        {requiresTypeChecking ? TYPE_INFORMATION_EMOJI : ''}
+      </td>
+      <td
+        className={styles.attrCol}
+        title={extendsBaseRule ? 'extends base rule' : undefined}
+      >
+        {extendsBaseRule ? EXTENSION_RULE_EMOJI : ''}
+      </td>
+      <td
+        className={styles.attrCol}
+        title={deprecated ? 'deprecated' : undefined}
+      >
+        {deprecated ? DEPRECATED_RULE_EMOJI : ''}
       </td>
     </tr>
   );
@@ -86,31 +119,31 @@ type FilterMode = (typeof filterModes)[number];
 
 function RuleFilterCheckBox({
   label,
-  setMode,
   mode,
+  setMode,
 }: {
   label: string;
-  setMode: (mode: FilterMode) => void;
   mode: FilterMode;
+  setMode: (mode: FilterMode) => void;
 }): React.JSX.Element {
   const toNextMode = (): void =>
     setMode(filterModes[(filterModes.indexOf(mode) + 1) % filterModes.length]);
   return (
     <li className={styles.checkboxListItem}>
       <button
-        type="button"
+        aria-label={`Toggle the filter mode. Current: ${mode}`}
         className={clsx(
           styles.checkboxLabel,
           mode === 'include' && styles.activated,
           mode === 'exclude' && styles.deactivated,
         )}
+        onClick={toNextMode}
         onKeyDown={(e): void => {
           if (e.key === 'Enter') {
             toNextMode();
           }
         }}
-        onClick={toNextMode}
-        aria-label={`Toggle the filter mode. Current: ${mode}`}
+        type="button"
       >
         <div
           aria-hidden
@@ -132,56 +165,56 @@ function match(mode: FilterMode, value: boolean): boolean | undefined {
   return undefined;
 }
 
-export default function RulesTable({
-  ruleset,
-}: {
-  ruleset: 'extension-rules' | 'supported-rules';
-}): React.JSX.Element {
-  const [filters, changeFilter] = useRulesFilters(ruleset);
+export default function RulesTable(): React.JSX.Element {
+  const [filters, changeFilter] = useRulesFilters();
 
   const rules = useRulesMeta();
-  const extensionRules = ruleset === 'extension-rules';
   const relevantRules = useMemo(
     () =>
-      rules
-        .filter(r => !!extensionRules === !!r.docs?.extendsBaseRule)
-        .filter(r => {
-          const opinions = [
-            match(filters.recommended, r.docs?.recommended === 'recommended'),
-            match(
-              filters.strict,
-              r.docs?.recommended === 'recommended' ||
-                r.docs?.recommended === 'strict',
-            ),
-            match(filters.stylistic, r.docs?.recommended === 'stylistic'),
-            match(filters.fixable, !!r.fixable),
-            match(filters.suggestions, !!r.hasSuggestions),
-            match(filters.typeInformation, !!r.docs?.requiresTypeChecking),
-          ].filter((o): o is boolean => o !== undefined);
-          return opinions.every(o => o);
-        }),
-    [rules, extensionRules, filters],
+      rules.filter(r => {
+        const actualRecommended = getActualRecommended(r);
+        const opinions = [
+          match(filters.recommended, actualRecommended === 'recommended'),
+          match(
+            filters.strict,
+            actualRecommended === 'recommended' ||
+              actualRecommended === 'strict',
+          ),
+          match(filters.stylistic, actualRecommended === 'stylistic'),
+          match(filters.fixable, !!r.fixable),
+          match(filters.suggestions, !!r.hasSuggestions),
+          match(filters.typeInformation, !!r.docs.requiresTypeChecking),
+          match(filters.extension, !!r.docs.extendsBaseRule),
+          match(filters.deprecated, !!r.deprecated),
+        ].filter(
+          (o): o is boolean =>
+            // eslint-disable-next-line @typescript-eslint/internal/eqeq-nullish
+            o !== undefined,
+        );
+        return opinions.every(o => o);
+      }),
+    [rules, filters],
   );
 
   return (
     <>
       <div className={styles.checkboxListArea}>
-        <em>Config Group</em>
+        <em>Config Group ({CONFIG_EMOJI})</em>
         <ul className={clsx('clean-list', styles.checkboxList)}>
           <RuleFilterCheckBox
+            label={`${RECOMMENDED_CONFIG_EMOJI} recommended`}
             mode={filters.recommended}
             setMode={(newMode): void => changeFilter('recommended', newMode)}
-            label="✅ recommended"
           />
           <RuleFilterCheckBox
+            label={`${STRICT_CONFIG_EMOJI} strict`}
             mode={filters.strict}
             setMode={(newMode): void => changeFilter('strict', newMode)}
-            label="🔒 strict"
           />
           <RuleFilterCheckBox
+            label={`${STYLISTIC_CONFIG_EMOJI} stylistic`}
             mode={filters.stylistic}
             setMode={(newMode): void => changeFilter('stylistic', newMode)}
-            label="🎨 stylistic"
           />
         </ul>
       </div>
@@ -189,36 +222,72 @@ export default function RulesTable({
         <em>Metadata</em>
         <ul className={clsx('clean-list', styles.checkboxList)}>
           <RuleFilterCheckBox
+            label={`${FIXABLE_EMOJI} fixable`}
             mode={filters.fixable}
             setMode={(newMode): void => changeFilter('fixable', newMode)}
-            label="🔧 fixable"
           />
           <RuleFilterCheckBox
+            label={`${SUGGESTIONS_EMOJI} has suggestions`}
             mode={filters.suggestions}
             setMode={(newMode): void => changeFilter('suggestions', newMode)}
-            label="💡 has suggestions"
           />
           <RuleFilterCheckBox
+            label={`${TYPE_INFORMATION_EMOJI} type checked`}
             mode={filters.typeInformation}
             setMode={(newMode): void =>
               changeFilter('typeInformation', newMode)
             }
-            label="💭 requires type information"
+          />
+          <RuleFilterCheckBox
+            label={`${EXTENSION_RULE_EMOJI} extension`}
+            mode={filters.extension}
+            setMode={(newMode): void => changeFilter('extension', newMode)}
+          />
+          <RuleFilterCheckBox
+            label={`${DEPRECATED_RULE_EMOJI} deprecated`}
+            mode={filters.deprecated}
+            setMode={(newMode): void => changeFilter('deprecated', newMode)}
           />
         </ul>
       </div>
+      <p>
+        (These categories are explained in{' '}
+        <a href="#filtering">more detail below</a>.)
+      </p>
       <table className={styles.rulesTable}>
         <thead>
           <tr>
             <th className={styles.ruleCol}>Rule</th>
-            <th className={styles.attrCol}>Config</th>
-            <th className={styles.attrCol}>Fixer</th>
-            <th className={styles.attrCol}>Typed</th>
+            <th className={styles.attrCol}>
+              <div title="The config group that the rule belongs to, if any.">
+                {CONFIG_EMOJI}
+              </div>
+            </th>
+            <th className={styles.attrCol}>
+              <div title="Whether the rule has an auto-fixer and/or has suggestions.">
+                {FIXABLE_EMOJI}
+              </div>
+            </th>
+            <th className={styles.attrCol}>
+              <div title="Whether the rule requires type information from the TypeScript compiler.">
+                {TYPE_INFORMATION_EMOJI}
+              </div>
+            </th>
+            <th className={styles.attrCol}>
+              <div title="Whether the rule is an extension rule (i.e. based on a core ESLint rule).">
+                {EXTENSION_RULE_EMOJI}
+              </div>
+            </th>
+            <th className={styles.attrCol}>
+              <div title="Whether the rule is deprecated.">
+                {DEPRECATED_RULE_EMOJI}
+              </div>
+            </th>
           </tr>
         </thead>
         <tbody>
           {relevantRules.map(rule => (
-            <RuleRow rule={rule} key={rule.name} />
+            <RuleRow key={rule.name} rule={rule} />
           ))}
         </tbody>
       </table>
@@ -227,6 +296,8 @@ export default function RulesTable({
 }
 
 type FilterCategory =
+  | 'deprecated'
+  | 'extension'
   | 'fixable'
   | 'recommended'
   | 'strict'
@@ -235,10 +306,12 @@ type FilterCategory =
   | 'typeInformation';
 type FiltersState = Record<FilterCategory, FilterMode>;
 const neutralFiltersState: FiltersState = {
+  deprecated: 'neutral',
+  extension: 'neutral',
+  fixable: 'neutral',
   recommended: 'neutral',
   strict: 'neutral',
   stylistic: 'neutral',
-  fixable: 'neutral',
   suggestions: 'neutral',
   typeInformation: 'neutral',
 };
@@ -247,8 +320,12 @@ const selectSearch: HistorySelector<string> = history =>
   history.location.search;
 const getServerSnapshot = (): string => '';
 
+/**
+ * @param paramsKey Optional. Whether to include rules that match the particular
+ * search filter. Defaults to an empty string, which matches all rules.
+ */
 function useRulesFilters(
-  paramsKey: string,
+  paramsKey = '',
 ): [FiltersState, (category: FilterCategory, mode: FilterMode) => void] {
   const history = useHistory();
   const search = useHistorySelector(selectSearch, getServerSnapshot);
@@ -301,8 +378,8 @@ function stringifyFiltersState(filters: FiltersState): string {
       value === 'include'
         ? key
         : value === 'exclude'
-        ? `${NEGATION_SYMBOL}${key}`
-        : '',
+          ? `${NEGATION_SYMBOL}${key}`
+          : '',
     )
     .filter(Boolean)
     .join('-');
@@ -315,7 +392,9 @@ function parseFiltersState(str: string): FiltersState {
     const exclude = part.startsWith(NEGATION_SYMBOL);
     const key = exclude ? part.slice(1) : part;
     if (Object.hasOwn(neutralFiltersState, key)) {
-      res[key] = exclude ? 'exclude' : 'include';
+      res[key as keyof typeof neutralFiltersState] = exclude
+        ? 'exclude'
+        : 'include';
     }
   }
 

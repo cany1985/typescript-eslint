@@ -1,10 +1,22 @@
 import type { TSESTree } from '@typescript-eslint/utils';
-import { AST_NODE_TYPES } from '@typescript-eslint/utils';
-import * as tsutils from 'ts-api-utils';
 import type * as ts from 'typescript';
 
-import * as util from '../util';
-import { getThisExpression } from '../util';
+import { AST_NODE_TYPES } from '@typescript-eslint/utils';
+import * as tsutils from 'ts-api-utils';
+
+import {
+  createRule,
+  getConstrainedTypeAtLocation,
+  getContextualType,
+  getParserServices,
+  getThisExpression,
+  isTypeAnyArrayType,
+  isTypeAnyType,
+  isTypeUnknownType,
+  isUnsafeAssignment,
+  nullThrows,
+  NullThrowsReasons,
+} from '../util';
 
 const enum ComparisonType {
   /** Do no assignment comparison */
@@ -15,7 +27,7 @@ const enum ComparisonType {
   Contextual,
 }
 
-export default util.createRule({
+export default createRule({
   name: 'no-unsafe-assignment',
   meta: {
     type: 'problem',
@@ -26,23 +38,24 @@ export default util.createRule({
       requiresTypeChecking: true,
     },
     messages: {
-      anyAssignment: 'Unsafe assignment of an `any` value.',
+      anyAssignment: 'Unsafe assignment of an {{sender}} value.',
       anyAssignmentThis: [
-        'Unsafe assignment of an `any` value. `this` is typed as `any`.',
+        'Unsafe assignment of an {{sender}} value. `this` is typed as `any`.',
         'You can try to fix this by turning on the `noImplicitThis` compiler option, or adding a `this` parameter to the function.',
       ].join('\n'),
-      unsafeArrayPattern: 'Unsafe array destructuring of an `any` array value.',
+      unsafeArrayPattern:
+        'Unsafe array destructuring of an {{sender}} array value.',
       unsafeArrayPatternFromTuple:
-        'Unsafe array destructuring of a tuple element with an `any` value.',
+        'Unsafe array destructuring of a tuple element with an {{sender}} value.',
+      unsafeArraySpread: 'Unsafe spread of an {{sender}} value in an array.',
       unsafeAssignment:
         'Unsafe assignment of type {{sender}} to a variable of type {{receiver}}.',
-      unsafeArraySpread: 'Unsafe spread of an `any` value in an array.',
     },
     schema: [],
   },
   defaultOptions: [],
   create(context) {
-    const services = util.getParserServices(context);
+    const services = getParserServices(context);
     const checker = services.program.getTypeChecker();
     const compilerOptions = services.program.getCompilerOptions();
     const isNoImplicitThis = tsutils.isStrictCompilerOptionEnabled(
@@ -73,10 +86,11 @@ export default util.createRule({
     ): boolean {
       // any array
       // const [x] = ([] as any[]);
-      if (util.isTypeAnyArrayType(senderType, checker)) {
+      if (isTypeAnyArrayType(senderType, checker)) {
         context.report({
           node: receiverNode,
           messageId: 'unsafeArrayPattern',
+          data: createData(senderType),
         });
         return false;
       }
@@ -85,7 +99,7 @@ export default util.createRule({
         return true;
       }
 
-      const tupleElements = util.getTypeArguments(senderType, checker);
+      const tupleElements = checker.getTypeArguments(senderType);
 
       // tuple with any
       // const [x] = [1 as any];
@@ -111,10 +125,11 @@ export default util.createRule({
         }
 
         // check for the any type first so we can handle [[[x]]] = [any]
-        if (util.isTypeAnyType(senderType)) {
+        if (isTypeAnyType(senderType)) {
           context.report({
             node: receiverElement,
             messageId: 'unsafeArrayPatternFromTuple',
+            data: createData(senderType),
           });
           // we want to report on every invalid element in the tuple
           didReport = true;
@@ -174,7 +189,7 @@ export default util.createRule({
         }
 
         let key: string;
-        if (receiverProperty.computed === false) {
+        if (!receiverProperty.computed) {
           key =
             receiverProperty.key.type === AST_NODE_TYPES.Identifier
               ? receiverProperty.key.name
@@ -197,10 +212,11 @@ export default util.createRule({
         }
 
         // check for the any type first so we can handle {x: {y: z}} = {x: any}
-        if (util.isTypeAnyType(senderType)) {
+        if (isTypeAnyType(senderType)) {
           context.report({
             node: receiverProperty.value,
             messageId: 'unsafeArrayPatternFromTuple',
+            data: createData(senderType),
           });
           didReport = true;
         } else if (
@@ -235,14 +251,14 @@ export default util.createRule({
       const receiverTsNode = services.esTreeNodeToTSNodeMap.get(receiverNode);
       const receiverType =
         comparisonType === ComparisonType.Contextual
-          ? util.getContextualType(checker, receiverTsNode as ts.Expression) ??
-            services.getTypeAtLocation(receiverNode)
+          ? (getContextualType(checker, receiverTsNode as ts.Expression) ??
+            services.getTypeAtLocation(receiverNode))
           : services.getTypeAtLocation(receiverNode);
       const senderType = services.getTypeAtLocation(senderNode);
 
-      if (util.isTypeAnyType(senderType)) {
+      if (isTypeAnyType(senderType)) {
         // handle cases when we assign any ==> unknown.
-        if (util.isTypeUnknownType(receiverType)) {
+        if (isTypeUnknownType(receiverType)) {
           return false;
         }
 
@@ -253,8 +269,8 @@ export default util.createRule({
           const thisExpression = getThisExpression(senderNode);
           if (
             thisExpression &&
-            util.isTypeAnyType(
-              util.getConstrainedTypeAtLocation(services, thisExpression),
+            isTypeAnyType(
+              getConstrainedTypeAtLocation(services, thisExpression),
             )
           ) {
             messageId = 'anyAssignmentThis';
@@ -264,7 +280,9 @@ export default util.createRule({
         context.report({
           node: reportingNode,
           messageId,
+          data: createData(senderType),
         });
+
         return true;
       }
 
@@ -272,7 +290,7 @@ export default util.createRule({
         return false;
       }
 
-      const result = util.isUnsafeAssignment(
+      const result = isUnsafeAssignment(
         senderType,
         receiverType,
         checker,
@@ -282,14 +300,11 @@ export default util.createRule({
         return false;
       }
 
-      const { sender, receiver } = result;
+      const { receiver, sender } = result;
       context.report({
         node: reportingNode,
         messageId: 'unsafeAssignment',
-        data: {
-          sender: checker.typeToString(sender),
-          receiver: checker.typeToString(receiver),
-        },
+        data: createData(sender, receiver),
       });
       return true;
     }
@@ -304,34 +319,30 @@ export default util.createRule({
           ComparisonType.None;
     }
 
-    return {
-      'VariableDeclarator[init != null]'(
-        node: TSESTree.VariableDeclarator,
-      ): void {
-        const init = util.nullThrows(
-          node.init,
-          util.NullThrowsReasons.MissingToken(node.type, 'init'),
-        );
-        let didReport = checkAssignment(
-          node.id,
-          init,
-          node,
-          getComparisonType(node.id.typeAnnotation),
-        );
+    function createData(
+      senderType: ts.Type,
+      receiverType?: ts.Type,
+    ): Readonly<Record<string, unknown>> | undefined {
+      if (receiverType) {
+        return {
+          receiver: `\`${checker.typeToString(receiverType)}\``,
+          sender: `\`${checker.typeToString(senderType)}\``,
+        };
+      }
+      return {
+        sender: tsutils.isIntrinsicErrorType(senderType)
+          ? 'error typed'
+          : '`any`',
+      };
+    }
 
-        if (!didReport) {
-          didReport = checkArrayDestructureHelper(node.id, init);
-        }
-        if (!didReport) {
-          checkObjectDestructureHelper(node.id, init);
-        }
-      },
-      'PropertyDefinition[value != null]'(
-        node: TSESTree.PropertyDefinition,
+    return {
+      'AccessorProperty[value != null]'(
+        node: { value: NonNullable<unknown> } & TSESTree.AccessorProperty,
       ): void {
         checkAssignment(
           node.key,
-          node.value!,
+          node.value,
           node,
           getComparisonType(node.typeAnnotation),
         );
@@ -354,6 +365,37 @@ export default util.createRule({
           checkObjectDestructureHelper(node.left, node.right);
         }
       },
+      'PropertyDefinition[value != null]'(
+        node: { value: NonNullable<unknown> } & TSESTree.PropertyDefinition,
+      ): void {
+        checkAssignment(
+          node.key,
+          node.value,
+          node,
+          getComparisonType(node.typeAnnotation),
+        );
+      },
+      'VariableDeclarator[init != null]'(
+        node: TSESTree.VariableDeclarator,
+      ): void {
+        const init = nullThrows(
+          node.init,
+          NullThrowsReasons.MissingToken(node.type, 'init'),
+        );
+        let didReport = checkAssignment(
+          node.id,
+          init,
+          node,
+          getComparisonType(node.id.typeAnnotation),
+        );
+
+        if (!didReport) {
+          didReport = checkArrayDestructureHelper(node.id, init);
+        }
+        if (!didReport) {
+          checkObjectDestructureHelper(node.id, init);
+        }
+      },
       // object pattern props are checked via assignments
       ':not(ObjectPattern) > Property'(node: TSESTree.Property): void {
         if (
@@ -368,20 +410,18 @@ export default util.createRule({
       },
       'ArrayExpression > SpreadElement'(node: TSESTree.SpreadElement): void {
         const restType = services.getTypeAtLocation(node.argument);
-        if (
-          util.isTypeAnyType(restType) ||
-          util.isTypeAnyArrayType(restType, checker)
-        ) {
+        if (isTypeAnyType(restType) || isTypeAnyArrayType(restType, checker)) {
           context.report({
-            node: node,
+            node,
             messageId: 'unsafeArraySpread',
+            data: createData(restType),
           });
         }
       },
       'JSXAttribute[value != null]'(node: TSESTree.JSXAttribute): void {
-        const value = util.nullThrows(
+        const value = nullThrows(
           node.value,
-          util.NullThrowsReasons.MissingToken(node.type, 'value'),
+          NullThrowsReasons.MissingToken(node.type, 'value'),
         );
         if (
           value.type !== AST_NODE_TYPES.JSXExpressionContainer ||
