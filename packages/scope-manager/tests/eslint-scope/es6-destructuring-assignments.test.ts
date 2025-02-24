@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/dot-notation -- ['implicit'] is private */
+import type { Reference } from '../../src';
+
 import {
   expectToBeForScope,
   expectToBeFunctionScope,
@@ -7,7 +9,7 @@ import {
   expectToBeParameterDefinition,
   getRealVariables,
   parseAndAnalyze,
-} from '../util';
+} from '../test-utils';
 
 describe('ES6 destructuring assignments', () => {
   it('Pattern in var in ForInStatement', () => {
@@ -680,7 +682,9 @@ describe('ES6 destructuring assignments', () => {
     expect(scope.references).toHaveLength(0);
     expect(scope['implicit'].leftToBeResolved).toHaveLength(4);
     expect(
-      scope['implicit'].leftToBeResolved.map(left => left.identifier.name),
+      scope['implicit'].leftToBeResolved.map(
+        (left: Reference) => left.identifier.name,
+      ),
     ).toEqual(['a', 'b', 'c', 'array']);
 
     scope = scopeManager.scopes[1];
@@ -762,7 +766,9 @@ describe('ES6 destructuring assignments', () => {
     expect(scope.references).toHaveLength(0);
     expect(scope['implicit'].leftToBeResolved).toHaveLength(4);
     expect(
-      scope['implicit'].leftToBeResolved.map(left => left.identifier.name),
+      scope['implicit'].leftToBeResolved.map(
+        (left: Reference) => left.identifier.name,
+      ),
     ).toEqual(['a', 'b', 'rest', 'array']);
 
     scope = scopeManager.scopes[1];
@@ -798,7 +804,9 @@ describe('ES6 destructuring assignments', () => {
     expect(scope.references).toHaveLength(0);
     expect(scope['implicit'].leftToBeResolved).toHaveLength(6);
     expect(
-      scope['implicit'].leftToBeResolved.map(left => left.identifier.name),
+      scope['implicit'].leftToBeResolved.map(
+        (left: Reference) => left.identifier.name,
+      ),
     ).toEqual(['a', 'b', 'c', 'd', 'rest', 'array']);
 
     scope = scopeManager.scopes[1];
@@ -839,7 +847,9 @@ describe('ES6 destructuring assignments', () => {
     expect(scope.references).toHaveLength(0);
     expect(scope['implicit'].leftToBeResolved).toHaveLength(4);
     expect(
-      scope['implicit'].leftToBeResolved.map(left => left.identifier.name),
+      scope['implicit'].leftToBeResolved.map(
+        (left: Reference) => left.identifier.name,
+      ),
     ).toEqual(['a', 'b', 'obj', 'array']);
 
     scope = scopeManager.scopes[1];
@@ -883,7 +893,9 @@ describe('ES6 destructuring assignments', () => {
     expect(scope.references).toHaveLength(0);
     expect(scope['implicit'].leftToBeResolved).toHaveLength(4);
     expect(
-      scope['implicit'].leftToBeResolved.map(left => left.identifier.name),
+      scope['implicit'].leftToBeResolved.map(
+        (left: Reference) => left.identifier.name,
+      ),
     ).toEqual(['shorthand', 'value', 'world', 'object']);
 
     scope = scopeManager.scopes[1];
@@ -928,7 +940,9 @@ describe('ES6 destructuring assignments', () => {
     expect(scope.references).toHaveLength(0);
     expect(scope['implicit'].leftToBeResolved).toHaveLength(8);
     expect(
-      scope['implicit'].leftToBeResolved.map(left => left.identifier.name),
+      scope['implicit'].leftToBeResolved.map(
+        (left: Reference) => left.identifier.name,
+      ),
     ).toEqual(['shorthand', 'a', 'b', 'c', 'd', 'e', 'world', 'object']);
 
     scope = scopeManager.scopes[1];

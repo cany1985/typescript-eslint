@@ -1,25 +1,32 @@
-/* eslint-disable @typescript-eslint/no-namespace */
+/* eslint-disable @typescript-eslint/no-namespace, no-restricted-syntax */
 
 import { Linter as ESLintLinter } from 'eslint';
 
-import type { ParserServices, TSESTree } from '../ts-estree';
-import type { ParserOptions as TSParserOptions } from './ParserOptions';
+import type { ClassicConfig, FlatConfig, SharedConfig } from './Config';
+import type { Parser } from './Parser';
+import type { Processor as ProcessorType } from './Processor';
 import type {
+  AnyRuleCreateFunction,
+  AnyRuleModule,
   RuleCreateFunction,
   RuleFix,
   RuleModule,
-  SharedConfigurationSettings,
 } from './Rule';
-import type { Scope } from './Scope';
 import type { SourceCode } from './SourceCode';
 
 export type MinimalRuleModule<
-  TMessageIds extends string = string,
-  TOptions extends readonly unknown[] = [],
-> = Partial<Omit<RuleModule<TMessageIds, TOptions>, 'create'>> &
-  Pick<RuleModule<TMessageIds, TOptions>, 'create'>;
+  MessageIds extends string = string,
+  Options extends readonly unknown[] = [],
+> = Partial<Omit<RuleModule<MessageIds, Options>, 'create'>> &
+  Pick<RuleModule<MessageIds, Options>, 'create'>;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 declare class LinterBase {
+  /**
+   * The version from package.json.
+   */
+  readonly version: string;
+
   /**
    * Initialize the Linter.
    * @param config the config object
@@ -31,27 +38,27 @@ declare class LinterBase {
    * @param parserId Name of the parser
    * @param parserModule The parser object
    */
-  defineParser(parserId: string, parserModule: Linter.ParserModule): void;
+  defineParser(parserId: string, parserModule: Parser.LooseParserModule): void;
 
   /**
    * Defines a new linting rule.
    * @param ruleId A unique rule identifier
    * @param ruleModule Function from context to object mapping AST node types to event handlers
    */
-  defineRule<TMessageIds extends string, TOptions extends readonly unknown[]>(
+  defineRule<MessageIds extends string, Options extends readonly unknown[]>(
     ruleId: string,
-    ruleModule: MinimalRuleModule<TMessageIds, TOptions> | RuleCreateFunction,
+    ruleModule: MinimalRuleModule<MessageIds, Options> | RuleCreateFunction,
   ): void;
 
   /**
    * Defines many new linting rules.
    * @param rulesToDefine map from unique rule identifier to rule
    */
-  defineRules<TMessageIds extends string, TOptions extends readonly unknown[]>(
+  defineRules<MessageIds extends string, Options extends readonly unknown[]>(
     rulesToDefine: Record<
       string,
-      | MinimalRuleModule<TMessageIds, TOptions>
-      | RuleCreateFunction<TMessageIds, TOptions>
+      | MinimalRuleModule<MessageIds, Options>
+      | RuleCreateFunction<MessageIds, Options>
     >,
   ): void;
 
@@ -77,10 +84,19 @@ declare class LinterBase {
    * @returns The results as an array of messages or an empty array if no messages.
    */
   verify(
-    textOrSourceCode: SourceCode | string,
-    config: Linter.Config,
-    filenameOrOptions?: Linter.VerifyOptions | string,
+    textOrSourceCode: string | SourceCode,
+    config: Linter.ConfigType,
+    filenameOrOptions?: string | Linter.VerifyOptions,
   ): Linter.LintMessage[];
+
+  ////////////////////
+  // static members //
+  ////////////////////
+
+  /**
+   * The version from package.json.
+   */
+  static readonly version: string;
 
   /**
    * Performs multiple autofix passes over the text until as many fixes as possible have been applied.
@@ -91,118 +107,47 @@ declare class LinterBase {
    */
   verifyAndFix(
     code: string,
-    config: Linter.Config,
+    config: Linter.ConfigType,
     options: Linter.FixOptions,
   ): Linter.FixReport;
-
-  /**
-   * The version from package.json.
-   */
-  readonly version: string;
-
-  ////////////////////
-  // static members //
-  ////////////////////
-
-  /**
-   * The version from package.json.
-   */
-  static readonly version: string;
 }
 
 namespace Linter {
   export interface LinterOptions {
+    /**
+     * Which config format to use.
+     * @default 'flat'
+     */
+    configType?: ConfigTypeSpecifier;
+
     /**
      * path to a directory that should be considered as the current working directory.
      */
     cwd?: string;
   }
 
-  export type Severity = 0 | 1 | 2;
-  export type SeverityString = 'error' | 'off' | 'warn';
-  export type RuleLevel = Severity | SeverityString;
+  export type ConfigTypeSpecifier = 'eslintrc' | 'flat';
+  export type EnvironmentConfig = SharedConfig.EnvironmentConfig;
+  export type GlobalsConfig = SharedConfig.GlobalsConfig;
+  export type GlobalVariableOption = SharedConfig.GlobalVariableOption;
+  export type GlobalVariableOptionBase = SharedConfig.GlobalVariableOptionBase;
+  export type ParserOptions = SharedConfig.ParserOptions;
+  export type PluginMeta = SharedConfig.PluginMeta;
+  export type RuleEntry = SharedConfig.RuleEntry;
+  export type RuleLevel = SharedConfig.RuleLevel;
+  export type RuleLevelAndOptions = SharedConfig.RuleLevelAndOptions;
+  export type RulesRecord = SharedConfig.RulesRecord;
+  export type Severity = SharedConfig.Severity;
+  export type SeverityString = SharedConfig.SeverityString;
 
-  export type RuleLevelAndOptions = [RuleLevel, ...unknown[]];
-
-  export type RuleEntry = RuleLevel | RuleLevelAndOptions;
-  export type RulesRecord = Partial<Record<string, RuleEntry>>;
-
-  export type GlobalVariableOptionBase = 'off' | 'readonly' | 'writable';
-  export type GlobalVariableOption = GlobalVariableOptionBase | boolean;
-
-  export type GlobalsConfig = Record<string, GlobalVariableOption>;
-  export type EnvironmentConfig = Record<string, boolean>;
-
-  // https://github.com/eslint/eslint/blob/v6.8.0/conf/config-schema.js
-  interface BaseConfig {
-    $schema?: string;
-    /**
-     * The environment settings.
-     */
-    env?: EnvironmentConfig;
-    /**
-     * The path to other config files or the package name of shareable configs.
-     */
-    extends?: string[] | string;
-    /**
-     * The global variable settings.
-     */
-    globals?: GlobalsConfig;
-    /**
-     * The flag that disables directive comments.
-     */
-    noInlineConfig?: boolean;
-    /**
-     * The override settings per kind of files.
-     */
-    overrides?: ConfigOverride[];
-    /**
-     * The path to a parser or the package name of a parser.
-     */
-    parser?: string;
-    /**
-     * The parser options.
-     */
-    parserOptions?: ParserOptions;
-    /**
-     * The plugin specifiers.
-     */
-    plugins?: string[];
-    /**
-     * The processor specifier.
-     */
-    processor?: string;
-    /**
-     * The flag to report unused `eslint-disable` comments.
-     */
-    reportUnusedDisableDirectives?: boolean;
-    /**
-     * The rule settings.
-     */
-    rules?: RulesRecord;
-    /**
-     * The shared settings.
-     */
-    settings?: SharedConfigurationSettings;
-  }
-
-  export interface ConfigOverride extends BaseConfig {
-    excludedFiles?: string[] | string;
-    files: string[] | string;
-  }
-
-  export interface Config extends BaseConfig {
-    /**
-     * The glob patterns that ignore to lint.
-     */
-    ignorePatterns?: string[] | string;
-    /**
-     * The root flag.
-     */
-    root?: boolean;
-  }
-
-  export type ParserOptions = TSParserOptions;
+  /** @deprecated use {@link Linter.ConfigType} instead */
+  export type Config = ClassicConfig.Config;
+  export type ConfigType =
+    | ClassicConfig.Config
+    | FlatConfig.Config
+    | FlatConfig.ConfigArray;
+  /** @deprecated use {@link ClassicConfig.ConfigOverride} instead */
+  export type ConfigOverride = ClassicConfig.ConfigOverride;
 
   export interface VerifyOptions {
     /**
@@ -229,16 +174,16 @@ namespace Linter {
      * the messages as appropriate, and return a one-dimensional array of
      * messages.
      */
-    postprocess?: Processor['postprocess'];
+    postprocess?: ProcessorType.PostProcess;
     /**
      * preprocessor for source text.
      * If provided, this should accept a string of source text, and return an array of code blocks to lint.
      */
-    preprocess?: Processor['preprocess'];
+    preprocess?: ProcessorType.PreProcess;
     /**
      * Adds reported errors for unused `eslint-disable` directives.
      */
-    reportUnusedDisableDirectives?: SeverityString | boolean;
+    reportUnusedDisableDirectives?: boolean | SeverityString;
   }
 
   export interface FixOptions extends VerifyOptions {
@@ -306,82 +251,63 @@ namespace Linter {
      */
     fixed: boolean;
     /**
-     * Fixed code text (might be the same as input if no fixes were applied).
-     */
-    output: string;
-    /**
      * Collection of all messages for the given code
      */
     messages: LintMessage[];
+    /**
+     * Fixed code text (might be the same as input if no fixes were applied).
+     */
+    output: string;
   }
 
-  export type ParserModule =
-    | {
-        parse(text: string, options?: ParserOptions): TSESTree.Program;
-      }
-    | {
-        parseForESLint(
-          text: string,
-          options?: ParserOptions,
-        ): ESLintParseResult;
-      };
+  /** @deprecated use {@link Parser.ParserModule} */
+  export type ParserModule = Parser.LooseParserModule;
 
-  export interface ESLintParseResult {
-    ast: TSESTree.Program;
-    services?: ParserServices;
-    scopeManager?: Scope.ScopeManager;
-    visitorKeys?: SourceCode.VisitorKeys;
-  }
+  /** @deprecated use {@link Parser.ParseResult} */
+  export type ESLintParseResult = Parser.ParseResult;
 
-  export interface Processor {
-    /**
-     * The function to extract code blocks.
-     */
-    preprocess?: (
-      text: string,
-      filename: string,
-    ) => (string | { text: string; filename: string })[];
-    /**
-     * The function to merge messages.
-     */
-    postprocess?: (
-      messagesList: Linter.LintMessage[][],
-      filename: string,
-    ) => Linter.LintMessage[];
-    /**
-     * If `true` then it means the processor supports autofix.
-     */
-    supportsAutofix?: boolean;
-  }
+  /** @deprecated use {@link ProcessorType.ProcessorModule} */
+  export type Processor = ProcessorType.ProcessorModule;
 
   export interface Environment {
     /**
      * The definition of global variables.
      */
-    globals?: Record<string, Linter.Config>;
+    globals?: GlobalsConfig;
     /**
      * The parser options that will be enabled under this environment.
      */
     parserOptions?: ParserOptions;
   }
 
+  // TODO - remove RuleCreateFunction once we no longer support ESLint 8
+  export type LegacyPluginRules = Record<
+    string,
+    AnyRuleCreateFunction | AnyRuleModule
+  >;
+  export type PluginRules = Record<string, AnyRuleModule>;
+
   export interface Plugin {
     /**
      * The definition of plugin configs.
      */
-    configs?: Record<string, Linter.Config>;
+    configs?: Record<string, ClassicConfig.Config>;
     /**
      * The definition of plugin environments.
      */
     environments?: Record<string, Environment>;
     /**
+     * Metadata about your plugin for easier debugging and more effective caching of plugins.
+     */
+    meta?: PluginMeta;
+    /**
      * The definition of plugin processors.
      */
-    processors?: Record<string, Processor>;
+    processors?: Record<string, ProcessorType.ProcessorModule>;
     /**
      * The definition of plugin rules.
      */
-    rules?: Record<string, RuleCreateFunction | RuleModule<string, unknown[]>>;
+    rules?: LegacyPluginRules;
   }
 }
 

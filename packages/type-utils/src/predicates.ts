@@ -2,32 +2,22 @@ import debug from 'debug';
 import * as tsutils from 'ts-api-utils';
 import * as ts from 'typescript';
 
-import { getTypeArguments } from './getTypeArguments';
-import { getTypeFlags, isTypeFlagSet } from './typeFlagUtils';
+import { isTypeFlagSet } from './typeFlagUtils';
 
-const log = debug('typescript-eslint:eslint-plugin:utils:types');
+const log = debug('typescript-eslint:type-utils:predicates');
 
 /**
  * Checks if the given type is (or accepts) nullable
- * @param isReceiver true if the type is a receiving type (i.e. the type of a called function's parameter)
  */
-export function isNullableType(
-  type: ts.Type,
-  {
-    isReceiver = false,
-    allowUndefined = true,
-  }: { isReceiver?: boolean; allowUndefined?: boolean } = {},
-): boolean {
-  const flags = getTypeFlags(type);
-
-  if (isReceiver && flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) {
-    return true;
-  }
-
-  if (allowUndefined) {
-    return (flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined)) !== 0;
-  }
-  return (flags & ts.TypeFlags.Null) !== 0;
+export function isNullableType(type: ts.Type): boolean {
+  return isTypeFlagSet(
+    type,
+    ts.TypeFlags.Any |
+      ts.TypeFlags.Unknown |
+      ts.TypeFlags.Null |
+      ts.TypeFlags.Undefined |
+      ts.TypeFlags.Void,
+  );
 }
 
 /**
@@ -101,10 +91,7 @@ export function isTypeAnyArrayType(
 ): boolean {
   return (
     checker.isArrayType(type) &&
-    isTypeAnyType(
-      // getTypeArguments was only added in TS3.7
-      getTypeArguments(type, checker)[0],
-    )
+    isTypeAnyType(checker.getTypeArguments(type)[0])
   );
 }
 
@@ -117,33 +104,49 @@ export function isTypeUnknownArrayType(
 ): boolean {
   return (
     checker.isArrayType(type) &&
-    isTypeUnknownType(
-      // getTypeArguments was only added in TS3.7
-      getTypeArguments(type, checker)[0],
-    )
+    isTypeUnknownType(checker.getTypeArguments(type)[0])
   );
 }
 
 export enum AnyType {
   Any,
+  PromiseAny,
   AnyArray,
   Safe,
 }
 /**
- * @returns `AnyType.Any` if the type is `any`, `AnyType.AnyArray` if the type is `any[]` or `readonly any[]`,
+ * @returns `AnyType.Any` if the type is `any`, `AnyType.AnyArray` if the type is `any[]` or `readonly any[]`, `AnyType.PromiseAny` if the type is `Promise<any>`,
  *          otherwise it returns `AnyType.Safe`.
  */
-export function isAnyOrAnyArrayTypeDiscriminated(
-  node: ts.Node,
+export function discriminateAnyType(
+  type: ts.Type,
   checker: ts.TypeChecker,
+  program: ts.Program,
+  tsNode: ts.Node,
 ): AnyType {
-  const type = checker.getTypeAtLocation(node);
   if (isTypeAnyType(type)) {
     return AnyType.Any;
   }
   if (isTypeAnyArrayType(type, checker)) {
     return AnyType.AnyArray;
   }
+  for (const part of tsutils.typeParts(type)) {
+    if (tsutils.isThenableType(checker, tsNode, part)) {
+      const awaitedType = checker.getAwaitedType(part);
+      if (awaitedType) {
+        const awaitedAnyType = discriminateAnyType(
+          awaitedType,
+          checker,
+          program,
+          tsNode,
+        );
+        if (awaitedAnyType === AnyType.Any) {
+          return AnyType.PromiseAny;
+        }
+      }
+    }
+  }
+
   return AnyType.Safe;
 }
 

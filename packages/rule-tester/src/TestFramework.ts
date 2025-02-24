@@ -1,29 +1,31 @@
+// These globals may or may not exist, we check for them at runtime
+declare const describe: RuleTesterTestFrameworkFunction | undefined;
+declare const it: RuleTesterTestFrameworkItFunction | undefined;
+declare const afterAll: AfterAll | undefined;
+
 /**
  * @param text a string describing the rule
- * @param callback the test callback
  */
 export type RuleTesterTestFrameworkFunctionBase = (
   text: string,
   callback: () => void,
 ) => void;
-export type RuleTesterTestFrameworkFunction =
-  RuleTesterTestFrameworkFunctionBase & {
-    /**
-     * Skips running the tests inside this `describe` for the current file
-     */
-    skip?: RuleTesterTestFrameworkFunctionBase;
-  };
-export type RuleTesterTestFrameworkItFunction =
-  RuleTesterTestFrameworkFunctionBase & {
-    /**
-     * Only runs this test in the current file.
-     */
-    only?: RuleTesterTestFrameworkFunctionBase;
-    /**
-     * Skips running this test in the current file.
-     */
-    skip?: RuleTesterTestFrameworkFunctionBase;
-  };
+export type RuleTesterTestFrameworkFunction = {
+  /**
+   * Skips running the tests inside this `describe` for the current file
+   */
+  skip?: RuleTesterTestFrameworkFunctionBase;
+} & RuleTesterTestFrameworkFunctionBase;
+export type RuleTesterTestFrameworkItFunction = {
+  /**
+   * Only runs this test in the current file.
+   */
+  only?: RuleTesterTestFrameworkFunctionBase;
+  /**
+   * Skips running this test in the current file.
+   */
+  skip?: RuleTesterTestFrameworkFunctionBase;
+} & RuleTesterTestFrameworkFunctionBase;
 
 type Maybe<T> = T | null | undefined;
 
@@ -51,6 +53,7 @@ let OVERRIDE_IT_SKIP: Maybe<RuleTesterTestFrameworkFunctionBase> = null;
  * allows the user to manually supply functions in case they want to roll their
  * own tooling
  */
+// eslint-disable-next-line @typescript-eslint/no-extraneous-class
 export abstract class TestFramework {
   /**
    * Runs a function after all the tests in this file have completed.

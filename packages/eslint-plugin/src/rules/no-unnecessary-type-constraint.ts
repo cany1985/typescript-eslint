@@ -1,34 +1,34 @@
 import type { TSESLint, TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
-import { extname } from 'path';
+import { extname } from 'node:path';
 import * as ts from 'typescript';
 
-import * as util from '../util';
+import type { MakeRequired } from '../util';
 
-type MakeRequired<Base, Key extends keyof Base> = Omit<Base, Key> & {
-  [K in Key]-?: NonNullable<Base[Key]>;
-};
+import { createRule } from '../util';
+
 type TypeParameterWithConstraint = MakeRequired<
   TSESTree.TSTypeParameter,
   'constraint'
 >;
 
-export default util.createRule({
+export default createRule({
   name: 'no-unnecessary-type-constraint',
   meta: {
+    type: 'suggestion',
     docs: {
       description: 'Disallow unnecessary constraints on generic types',
       recommended: 'recommended',
     },
     hasSuggestions: true,
     messages: {
-      unnecessaryConstraint:
-        'Constraining the generic type `{{name}}` to `{{constraint}}` does nothing and is unnecessary.',
       removeUnnecessaryConstraint:
         'Remove the unnecessary `{{constraint}}` constraint.',
+      unnecessaryConstraint:
+        'Constraining the generic type `{{name}}` to `{{constraint}}` does nothing and is unnecessary.',
     },
     schema: [],
-    type: 'suggestion',
   },
   defaultOptions: [],
   create(context) {
@@ -43,7 +43,7 @@ export default util.createRule({
     function checkRequiresGenericDeclarationDisambiguation(
       filename: string,
     ): boolean {
-      const pathExt = extname(filename).toLocaleLowerCase();
+      const pathExt = extname(filename).toLocaleLowerCase() as ts.Extension;
       switch (pathExt) {
         case ts.Extension.Cts:
         case ts.Extension.Mts:
@@ -56,9 +56,7 @@ export default util.createRule({
     }
 
     const requiresGenericDeclarationDisambiguation =
-      checkRequiresGenericDeclarationDisambiguation(context.getFilename());
-
-    const source = context.getSourceCode();
+      checkRequiresGenericDeclarationDisambiguation(context.filename);
 
     const checkNode = (
       node: TypeParameterWithConstraint,
@@ -73,16 +71,18 @@ export default util.createRule({
         return (
           (node.parent as TSESTree.TSTypeParameterDeclaration).params.length ===
             1 &&
-          source.getTokensAfter(node)[0].value !== ',' &&
+          context.sourceCode.getTokensAfter(node)[0].value !== ',' &&
           !node.default
         );
       }
 
       if (constraint) {
         context.report({
+          node,
+          messageId: 'unnecessaryConstraint',
           data: {
-            constraint,
             name: node.name.name,
+            constraint,
           },
           suggest: [
             {
@@ -98,8 +98,6 @@ export default util.createRule({
               },
             },
           ],
-          messageId: 'unnecessaryConstraint',
-          node,
         });
       }
     };

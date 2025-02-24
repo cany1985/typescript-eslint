@@ -4,21 +4,21 @@ export const DEFAULT_TSCONFIG_CACHE_DURATION_SECONDS = 30;
 const ZERO_HR_TIME: [number, number] = [0, 0];
 
 export interface CacheLike<Key, Value> {
-  get(key: Key): Value | void;
+  get(key: Key): Value | undefined;
   set(key: Key, value: Value): this;
 }
 
 /**
  * A map with key-level expiration.
  */
-export class ExpiringCache<TKey, TValue> implements CacheLike<TKey, TValue> {
+export class ExpiringCache<Key, Value> implements CacheLike<Key, Value> {
   readonly #cacheDurationSeconds: CacheDurationSeconds;
 
   readonly #map = new Map<
-    TKey,
+    Key,
     Readonly<{
-      value: TValue;
       lastSeen: [number, number];
+      value: Value;
     }>
   >();
 
@@ -26,19 +26,11 @@ export class ExpiringCache<TKey, TValue> implements CacheLike<TKey, TValue> {
     this.#cacheDurationSeconds = cacheDurationSeconds;
   }
 
-  set(key: TKey, value: TValue): this {
-    this.#map.set(key, {
-      value,
-      lastSeen:
-        this.#cacheDurationSeconds === 'Infinity'
-          ? // no need to waste time calculating the hrtime in infinity mode as there's no expiry
-            ZERO_HR_TIME
-          : process.hrtime(),
-    });
-    return this;
+  clear(): void {
+    this.#map.clear();
   }
 
-  get(key: TKey): TValue | undefined {
+  get(key: Key): Value | undefined {
     const entry = this.#map.get(key);
     if (entry?.value != null) {
       if (this.#cacheDurationSeconds === 'Infinity') {
@@ -57,7 +49,15 @@ export class ExpiringCache<TKey, TValue> implements CacheLike<TKey, TValue> {
     return undefined;
   }
 
-  clear(): void {
-    this.#map.clear();
+  set(key: Key, value: Value): this {
+    this.#map.set(key, {
+      lastSeen:
+        this.#cacheDurationSeconds === 'Infinity'
+          ? // no need to waste time calculating the hrtime in infinity mode as there's no expiry
+            ZERO_HR_TIME
+          : process.hrtime(),
+      value,
+    });
+    return this;
   }
 }

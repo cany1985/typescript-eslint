@@ -1,7 +1,13 @@
-import { useColorMode } from '@docusaurus/theme-common';
 import type Monaco from 'monaco-editor';
 import type React from 'react';
+
+import { useColorMode } from '@docusaurus/theme-common';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import type { LintCodeAction } from '../linter/utils';
+import type { TabType } from '../types';
+import type { CommonEditorProps } from './types';
+import type { SandboxServices } from './useSandboxServices';
 
 import { useResizeObserver } from '../hooks/useResizeObserver';
 import { createCompilerOptions } from '../lib/createCompilerOptions';
@@ -12,12 +18,8 @@ import {
   getTypescriptJsonSchema,
 } from '../lib/jsonSchema';
 import { parseTSConfig, tryParseEslintModule } from '../lib/parseConfig';
-import type { LintCodeAction } from '../linter/utils';
 import { parseLintResults, parseMarkers } from '../linter/utils';
-import type { TabType } from '../types';
 import { createProvideCodeActions } from './createProvideCodeActions';
-import type { CommonEditorProps } from './types';
-import type { SandboxServices } from './useSandboxServices';
 
 export type LoadedEditorProps = CommonEditorProps & SandboxServices;
 
@@ -34,23 +36,21 @@ function applyEdit(
 }
 
 export const LoadedEditor: React.FC<LoadedEditorProps> = ({
+  activeTab,
   code,
-  tsconfig,
   eslintrc,
-  selectedRange,
   fileType,
-  onEsASTChange,
-  onScopeChange,
-  onTsASTChange,
-  onMarkersChange,
+  onASTChange,
   onChange,
+  onMarkersChange,
   onSelect,
   sandboxInstance: { editor, monaco },
+  selectedRange,
   showAST,
-  system,
   sourceType,
+  system,
+  tsconfig,
   webLinter,
-  activeTab,
 }) => {
   const { colorMode } = useColorMode();
   const [_, setDecorations] = useState<string[]>([]);
@@ -58,25 +58,27 @@ export const LoadedEditor: React.FC<LoadedEditorProps> = ({
   const codeActions = useRef(new Map<string, LintCodeAction[]>()).current;
   const [tabs] = useState<Record<TabType, Monaco.editor.ITextModel>>(() => {
     const tabsDefault = {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       code: editor.getModel()!,
-      tsconfig: monaco.editor.createModel(
-        tsconfig,
-        'json',
-        monaco.Uri.file('/tsconfig.json'),
-      ),
       eslintrc: monaco.editor.createModel(
         eslintrc,
         'json',
         monaco.Uri.file('/.eslintrc'),
       ),
+      tsconfig: monaco.editor.createModel(
+        tsconfig,
+        'json',
+        monaco.Uri.file('/tsconfig.json'),
+      ),
     };
-    tabsDefault.code.updateOptions({ tabSize: 2, insertSpaces: true });
-    tabsDefault.eslintrc.updateOptions({ tabSize: 2, insertSpaces: true });
-    tabsDefault.tsconfig.updateOptions({ tabSize: 2, insertSpaces: true });
+    tabsDefault.code.updateOptions({ insertSpaces: true, tabSize: 2 });
+    tabsDefault.eslintrc.updateOptions({ insertSpaces: true, tabSize: 2 });
+    tabsDefault.tsconfig.updateOptions({ insertSpaces: true, tabSize: 2 });
     return tabsDefault;
   });
 
   const updateMarkers = useCallback(() => {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const model = editor.getModel()!;
     const markers = monaco.editor.getModelMarkers({
       resource: model.uri,
@@ -97,7 +99,7 @@ export const LoadedEditor: React.FC<LoadedEditorProps> = ({
         undefined,
         monaco.Uri.file(newPath),
       );
-      newModel.updateOptions({ tabSize: 2, insertSpaces: true });
+      newModel.updateOptions({ insertSpaces: true, tabSize: 2 });
       if (tabs.code.isAttachedToEditor()) {
         editor.setModel(newModel);
       }
@@ -125,27 +127,25 @@ export const LoadedEditor: React.FC<LoadedEditorProps> = ({
 
   useEffect(() => {
     const disposable = webLinter.onLint((uri, messages) => {
+      const model = monaco.editor.getModel(monaco.Uri.file(uri));
+      if (!model) {
+        return;
+      }
       const diagnostics = parseLintResults(messages, codeActions, ruleId =>
         monaco.Uri.parse(webLinter.rules.get(ruleId)?.url ?? ''),
       );
-      monaco.editor.setModelMarkers(
-        monaco.editor.getModel(monaco.Uri.file(uri))!,
-        'eslint',
-        diagnostics,
-      );
+      monaco.editor.setModelMarkers(model, 'eslint', diagnostics);
       updateMarkers();
     });
-    return () => disposable();
+    return (): void => disposable();
   }, [webLinter, monaco, codeActions, updateMarkers]);
 
   useEffect(() => {
     const disposable = webLinter.onParse((uri, model) => {
-      onEsASTChange(model.storedAST);
-      onScopeChange(model.storedScope as Record<string, unknown> | undefined);
-      onTsASTChange(model.storedTsAST);
+      onASTChange(model);
     });
-    return () => disposable();
-  }, [webLinter, onEsASTChange, onScopeChange, onTsASTChange]);
+    return (): void => disposable();
+  }, [webLinter, onASTChange]);
 
   useEffect(() => {
     const createRuleUri = (name: string): string =>
@@ -153,25 +153,25 @@ export const LoadedEditor: React.FC<LoadedEditorProps> = ({
 
     // configure the JSON language support with schemas and schema associations
     monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
-      validate: true,
-      enableSchemaRequest: false,
       allowComments: true,
+      enableSchemaRequest: false,
       schemas: [
-        ...Array.from(webLinter.rules.values()).map(rule => ({
-          uri: createRuleUri(rule.name),
+        ...[...webLinter.rules.values()].map(rule => ({
           schema: getRuleJsonSchemaWithErrorLevel(rule.name, rule.schema),
+          uri: createRuleUri(rule.name),
         })),
         {
-          uri: monaco.Uri.file('eslint-schema.json').toString(), // id of the first schema
           fileMatch: ['/.eslintrc'], // associate with our model
           schema: getEslintJsonSchema(webLinter, createRuleUri),
+          uri: monaco.Uri.file('eslint-schema.json').toString(), // id of the first schema
         },
         {
-          uri: monaco.Uri.file('ts-schema.json').toString(), // id of the first schema
           fileMatch: ['/tsconfig.json'], // associate with our model
           schema: getTypescriptJsonSchema(),
+          uri: monaco.Uri.file('ts-schema.json').toString(), // id of the first schema
         },
       ],
+      validate: true,
     });
   }, [monaco, webLinter]);
 
@@ -180,7 +180,7 @@ export const LoadedEditor: React.FC<LoadedEditorProps> = ({
       'typescript',
       createProvideCodeActions(codeActions),
     );
-    return () => disposable.dispose();
+    return (): void => disposable.dispose();
   }, [codeActions, monaco]);
 
   useEffect(() => {
@@ -193,7 +193,9 @@ export const LoadedEditor: React.FC<LoadedEditorProps> = ({
         }
       }
     });
-    return () => disposable.dispose();
+    return (): void => {
+      disposable.dispose();
+    };
   }, [editor, tabs.eslintrc]);
 
   useEffect(() => {
@@ -206,16 +208,16 @@ export const LoadedEditor: React.FC<LoadedEditorProps> = ({
         }
       }, 150),
     );
-    return () => disposable.dispose();
+    return (): void => disposable.dispose();
   }, [onSelect, editor, tabs.code]);
 
   useEffect(() => {
     const disposable = editor.addAction({
-      id: 'fix-eslint-problems',
-      label: 'Fix eslint problems',
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
       contextMenuGroupId: 'snippets',
       contextMenuOrder: 1.5,
+      id: 'fix-eslint-problems',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+      label: 'Fix eslint problems',
       run(editor) {
         const editorModel = editor.getModel();
         if (editorModel) {
@@ -229,7 +231,7 @@ export const LoadedEditor: React.FC<LoadedEditorProps> = ({
         }
       },
     });
-    return () => disposable.dispose();
+    return (): void => disposable.dispose();
   }, [editor, monaco, webLinter]);
 
   useEffect(() => {
@@ -245,7 +247,7 @@ export const LoadedEditor: React.FC<LoadedEditorProps> = ({
       }),
     ];
 
-    return () => {
+    return (): void => {
       closable.forEach(c => c.close());
     };
   }, [system, onChange]);
@@ -257,21 +259,21 @@ export const LoadedEditor: React.FC<LoadedEditorProps> = ({
         system.writeFile(model.uri.path, model.getValue());
       }
     });
-    return () => disposable.dispose();
+    return (): void => disposable.dispose();
   }, [editor, system]);
 
   useEffect(() => {
     const disposable = monaco.editor.onDidChangeMarkers(() => {
       updateMarkers();
     });
-    return () => disposable.dispose();
+    return (): void => disposable.dispose();
   }, [monaco.editor, updateMarkers]);
 
   const resize = useMemo(() => {
     return debounce(() => editor.layout(), 1);
   }, [editor]);
 
-  const container = editor.getContainerDomNode?.() ?? editor.getDomNode();
+  const container = editor.getContainerDomNode();
 
   useResizeObserver(container, () => {
     resize();
@@ -315,14 +317,14 @@ export const LoadedEditor: React.FC<LoadedEditorProps> = ({
         selectedRange && showAST
           ? [
               {
-                range: monaco.Range.fromPositions(
-                  tabs.code.getPositionAt(selectedRange[0]),
-                  tabs.code.getPositionAt(selectedRange[1]),
-                ),
                 options: {
                   inlineClassName: 'myLineDecoration',
                   stickiness: 1,
                 },
+                range: monaco.Range.fromPositions(
+                  tabs.code.getPositionAt(selectedRange[0]),
+                  tabs.code.getPositionAt(selectedRange[1]),
+                ),
               },
             ]
           : [],

@@ -1,4 +1,5 @@
 import type { TSESLint, TSESTree } from '@typescript-eslint/utils';
+
 import * as ts from 'typescript';
 
 import { escapeRegExp } from './escapeRegExp';
@@ -11,10 +12,10 @@ export * from '@typescript-eslint/utils/ast-utils';
 // Could be export { getNameLocationInGlobalDirectiveComment } from 'eslint/lib/rules/utils/ast-utils'
 /**
  * Get the `loc` object of a given name in a `/*globals` directive comment.
- * @param {SourceCode} sourceCode The source code to convert index to loc.
- * @param {Comment} comment The `/*globals` directive comment which include the name.
- * @param {string} name The name to find.
- * @returns {SourceLocation} The `loc` object.
+ * @param sourceCode The source code to convert index to loc.
+ * @param comment The `/*globals` directive comment which include the name.
+ * @param name The name to find.
+ * @returns The `loc` object.
  */
 export function getNameLocationInGlobalDirectiveComment(
   sourceCode: TSESLint.SourceCode,
@@ -37,11 +38,11 @@ export function getNameLocationInGlobalDirectiveComment(
     comment.range[0] + '/*'.length + (match ? match.index + 1 : 0),
   );
   const end = {
-    line: start.line,
     column: start.column + (match ? name.length : 1),
+    line: start.line,
   };
 
-  return { start, end };
+  return { end, start };
 }
 
 // Copied from typescript https://github.com/microsoft/TypeScript/blob/42b0e3c4630c129ca39ce0df9fff5f0d1b4dd348/src/compiler/utilities.ts#L1335

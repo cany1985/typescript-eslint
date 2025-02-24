@@ -4,11 +4,12 @@ import rule from '../../src/rules/no-unsafe-member-access';
 import { getFixturesRootDir } from '../RuleTester';
 
 const ruleTester = new RuleTester({
-  parser: '@typescript-eslint/parser',
-  parserOptions: {
-    EXPERIMENTAL_useProjectService: false,
-    project: './tsconfig.noImplicitThis.json',
-    tsconfigRootDir: getFixturesRootDir(),
+  languageOptions: {
+    parserOptions: {
+      project: './tsconfig.noImplicitThis.json',
+      projectService: false,
+      tsconfigRootDir: getFixturesRootDir(),
+    },
   },
 });
 
@@ -55,20 +56,16 @@ function foo(x: string[]) {
 }
     `,
     `
-function foo(x?: string[]) {
-  x?.[1++];
-}
-    `,
-    `
-function foo(x?: string[]) {
-  x?.[(1 as any)++];
-}
-    `,
-    `
 class B implements FG.A {}
     `,
     `
 interface B extends FG.A {}
+    `,
+    `
+class B implements F.S.T.A {}
+    `,
+    `
+interface B extends F.S.T.A {}
     `,
   ],
   invalid: [
@@ -80,10 +77,14 @@ function foo(x: any) {
       `,
       errors: [
         {
-          messageId: 'unsafeMemberExpression',
+          column: 5,
           data: {
             property: '.a',
+            type: '`any`',
           },
+          endColumn: 6,
+          line: 3,
+          messageId: 'unsafeMemberExpression',
         },
       ],
     },
@@ -95,10 +96,14 @@ function foo(x: any) {
       `,
       errors: [
         {
-          messageId: 'unsafeMemberExpression',
+          column: 5,
           data: {
             property: '.a',
+            type: '`any`',
           },
+          endColumn: 6,
+          line: 3,
+          messageId: 'unsafeMemberExpression',
         },
       ],
     },
@@ -110,10 +115,14 @@ function foo(x: { a: any }) {
       `,
       errors: [
         {
-          messageId: 'unsafeMemberExpression',
+          column: 7,
           data: {
             property: '.b',
+            type: '`any`',
           },
+          endColumn: 8,
+          line: 3,
+          messageId: 'unsafeMemberExpression',
         },
       ],
     },
@@ -125,10 +134,14 @@ function foo(x: any) {
       `,
       errors: [
         {
-          messageId: 'unsafeMemberExpression',
+          column: 5,
           data: {
             property: "['a']",
+            type: '`any`',
           },
+          endColumn: 8,
+          line: 3,
+          messageId: 'unsafeMemberExpression',
         },
       ],
     },
@@ -140,10 +153,33 @@ function foo(x: any) {
       `,
       errors: [
         {
-          messageId: 'unsafeMemberExpression',
+          column: 5,
           data: {
             property: "['a']",
+            type: '`any`',
           },
+          endColumn: 8,
+          line: 3,
+          messageId: 'unsafeMemberExpression',
+        },
+      ],
+    },
+    {
+      code: `
+let value: NotKnown;
+
+value.property;
+      `,
+      errors: [
+        {
+          column: 7,
+          data: {
+            property: '.property',
+            type: '`error` typed',
+          },
+          endColumn: 15,
+          line: 4,
+          messageId: 'unsafeMemberExpression',
         },
       ],
     },
@@ -155,10 +191,14 @@ function foo(x: { a: number }, y: any) {
       `,
       errors: [
         {
-          messageId: 'unsafeComputedMemberAccess',
+          column: 5,
           data: {
             property: '[y]',
+            type: '`any`',
           },
+          endColumn: 6,
+          line: 3,
+          messageId: 'unsafeComputedMemberAccess',
         },
       ],
     },
@@ -170,10 +210,14 @@ function foo(x?: { a: number }, y: any) {
       `,
       errors: [
         {
-          messageId: 'unsafeComputedMemberAccess',
+          column: 7,
           data: {
             property: '[y]',
+            type: '`any`',
           },
+          endColumn: 8,
+          line: 3,
+          messageId: 'unsafeComputedMemberAccess',
         },
       ],
     },
@@ -185,10 +229,14 @@ function foo(x: { a: number }, y: any) {
       `,
       errors: [
         {
-          messageId: 'unsafeComputedMemberAccess',
+          column: 6,
           data: {
             property: '[y += 1]',
+            type: '`any`',
           },
+          endColumn: 12,
+          line: 3,
+          messageId: 'unsafeComputedMemberAccess',
         },
       ],
     },
@@ -200,10 +248,14 @@ function foo(x: { a: number }, y: any) {
       `,
       errors: [
         {
-          messageId: 'unsafeComputedMemberAccess',
+          column: 5,
           data: {
             property: '[1 as any]',
+            type: '`any`',
           },
+          endColumn: 13,
+          line: 3,
+          messageId: 'unsafeComputedMemberAccess',
         },
       ],
     },
@@ -215,10 +267,14 @@ function foo(x: { a: number }, y: any) {
       `,
       errors: [
         {
-          messageId: 'unsafeComputedMemberAccess',
+          column: 5,
           data: {
             property: '[y()]',
+            type: '`any`',
           },
+          endColumn: 8,
+          line: 3,
+          messageId: 'unsafeComputedMemberAccess',
         },
       ],
     },
@@ -230,10 +286,33 @@ function foo(x: string[], y: any) {
       `,
       errors: [
         {
-          messageId: 'unsafeComputedMemberAccess',
+          column: 5,
           data: {
             property: '[y]',
+            type: '`any`',
           },
+          endColumn: 6,
+          line: 3,
+          messageId: 'unsafeComputedMemberAccess',
+        },
+      ],
+    },
+    {
+      code: `
+function foo(x: { a: number }, y: NotKnown) {
+  x[y];
+}
+      `,
+      errors: [
+        {
+          column: 5,
+          data: {
+            property: '[y]',
+            type: '`error` typed',
+          },
+          endColumn: 6,
+          line: 3,
+          messageId: 'unsafeComputedMemberAccess',
         },
       ],
     },
@@ -258,22 +337,48 @@ const methods = {
       `,
       errors: [
         {
-          messageId: 'unsafeThisMemberExpression',
-          line: 4,
-          column: 12,
+          column: 17,
           endColumn: 24,
+          line: 4,
+          messageId: 'unsafeThisMemberExpression',
         },
         {
-          messageId: 'unsafeThisMemberExpression',
+          column: 17,
+          endColumn: 30,
           line: 8,
-          column: 12,
-          endColumn: 31,
+          messageId: 'unsafeThisMemberExpression',
         },
         {
-          messageId: 'unsafeThisMemberExpression',
-          line: 14,
-          column: 13,
+          column: 19,
           endColumn: 26,
+          line: 14,
+          messageId: 'unsafeThisMemberExpression',
+        },
+      ],
+    },
+    {
+      code: `
+class C {
+  getObs$: any;
+  getPopularDepartments(): void {
+    this.getObs$.pipe().subscribe(res => {
+      console.log(res);
+    });
+  }
+}
+      `,
+      errors: [
+        {
+          column: 18,
+          endColumn: 22,
+          line: 5,
+          messageId: 'unsafeMemberExpression',
+        },
+        {
+          column: 25,
+          endColumn: 34,
+          line: 5,
+          messageId: 'unsafeMemberExpression',
         },
       ],
     },

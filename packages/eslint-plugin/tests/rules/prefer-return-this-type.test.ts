@@ -6,10 +6,11 @@ import { getFixturesRootDir } from '../RuleTester';
 const rootPath = getFixturesRootDir();
 
 const ruleTester = new RuleTester({
-  parser: '@typescript-eslint/parser',
-  parserOptions: {
-    tsconfigRootDir: rootPath,
-    project: './tsconfig.json',
+  languageOptions: {
+    parserOptions: {
+      project: './tsconfig.json',
+      tsconfigRootDir: rootPath,
+    },
   },
 });
 
@@ -80,6 +81,25 @@ class Derived extends Base {
   }
 }
     `,
+    `
+class Foo {
+  accessor f = () => {
+    return this;
+  };
+}
+    `,
+    `
+class Foo {
+  accessor f = (): this => {
+    return this;
+  };
+}
+    `,
+    `
+class Foo {
+  f?: string;
+}
+    `,
   ],
   invalid: [
     {
@@ -92,9 +112,9 @@ class Foo {
       `,
       errors: [
         {
-          messageId: 'useThisType',
-          line: 3,
           column: 8,
+          line: 3,
+          messageId: 'useThisType',
         },
       ],
       output: `
@@ -102,6 +122,29 @@ class Foo {
   f(): this {
     return this;
   }
+}
+      `,
+    },
+    {
+      code: `
+class Foo {
+  f = function (): Foo {
+    return this;
+  };
+}
+      `,
+      errors: [
+        {
+          column: 20,
+          line: 3,
+          messageId: 'useThisType',
+        },
+      ],
+      output: `
+class Foo {
+  f = function (): this {
+    return this;
+  };
 }
       `,
     },
@@ -116,9 +159,9 @@ class Foo {
       `,
       errors: [
         {
-          messageId: 'useThisType',
-          line: 3,
           column: 8,
+          line: 3,
+          messageId: 'useThisType',
         },
       ],
       output: `
@@ -140,9 +183,9 @@ class Foo {
       `,
       errors: [
         {
-          messageId: 'useThisType',
-          line: 3,
           column: 11,
+          line: 3,
+          messageId: 'useThisType',
         },
       ],
       output: `
@@ -164,9 +207,9 @@ class Foo {
       `,
       errors: [
         {
-          messageId: 'useThisType',
-          line: 3,
           column: 11,
+          line: 3,
+          messageId: 'useThisType',
         },
       ],
       output: `
@@ -186,14 +229,56 @@ class Foo {
       `,
       errors: [
         {
-          messageId: 'useThisType',
-          line: 3,
           column: 11,
+          line: 3,
+          messageId: 'useThisType',
         },
       ],
       output: `
 class Foo {
   f = (): this => this;
+}
+      `,
+    },
+    {
+      code: `
+class Foo {
+  accessor f = (): Foo => {
+    return this;
+  };
+}
+      `,
+      errors: [
+        {
+          column: 20,
+          line: 3,
+          messageId: 'useThisType',
+        },
+      ],
+      output: `
+class Foo {
+  accessor f = (): this => {
+    return this;
+  };
+}
+      `,
+    },
+    {
+      code: `
+class Foo {
+  accessor f = (): Foo => this;
+}
+      `,
+      errors: [
+        {
+          column: 20,
+          line: 3,
+          messageId: 'useThisType',
+        },
+      ],
+      output: `
+class Foo {
+  accessor f = (): this => this;
 }
       `,
     },
@@ -210,9 +295,9 @@ class Foo {
       `,
       errors: [
         {
-          messageId: 'useThisType',
-          line: 3,
           column: 9,
+          line: 3,
+          messageId: 'useThisType',
         },
       ],
       output: `
@@ -238,9 +323,9 @@ class Foo {
       `,
       errors: [
         {
-          messageId: 'useThisType',
-          line: 3,
           column: 10,
+          line: 3,
+          messageId: 'useThisType',
         },
       ],
       output: `
@@ -268,9 +353,9 @@ class Foo {
       `,
       errors: [
         {
-          messageId: 'useThisType',
-          line: 3,
           column: 20,
+          line: 3,
+          messageId: 'useThisType',
         },
       ],
       output: `
@@ -298,10 +383,10 @@ class Animal<T> {
       `,
       errors: [
         {
-          messageId: 'useThisType',
-          line: 3,
           column: 10,
           endColumn: 19,
+          line: 3,
+          messageId: 'useThisType',
         },
       ],
       output: `

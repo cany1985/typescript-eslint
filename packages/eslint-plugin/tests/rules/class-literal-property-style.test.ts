@@ -2,9 +2,7 @@ import { RuleTester } from '@typescript-eslint/rule-tester';
 
 import rule from '../../src/rules/class-literal-property-style';
 
-const ruleTester = new RuleTester({
-  parser: '@typescript-eslint/parser',
-});
+const ruleTester = new RuleTester();
 
 ruleTester.run('class-literal-property-style', rule, {
   valid: [
@@ -84,6 +82,48 @@ abstract class Mx {
         \`;
       }
     `,
+    `
+      class Mx {
+        set p1(val) {}
+        get p1() {
+          return '';
+        }
+      }
+    `,
+    `
+      let p1 = 'p1';
+      class Mx {
+        set [p1](val) {}
+        get [p1]() {
+          return '';
+        }
+      }
+    `,
+    `
+      let p1 = 'p1';
+      class Mx {
+        set [/* before set */ p1 /* after set */](val) {}
+        get [/* before get */ p1 /* after get */]() {
+          return '';
+        }
+      }
+    `,
+    `
+      class Mx {
+        set ['foo'](val) {}
+        get foo() {
+          return '';
+        }
+        set bar(val) {}
+        get ['bar']() {
+          return '';
+        }
+        set ['baz'](val) {}
+        get baz() {
+          return '';
+        }
+      }
+    `,
     {
       code: `
         class Mx {
@@ -99,7 +139,7 @@ abstract class Mx {
     {
       code: `
 class Mx {
-  public declare readonly foo = 1;
+  declare public readonly foo = 1;
 }
       `,
       options: ['getters'],
@@ -178,6 +218,74 @@ class Mx {
       `,
       options: ['getters'],
     },
+    {
+      code: `
+        class A {
+          private readonly foo: string = 'bar';
+          constructor(foo: string) {
+            this.foo = foo;
+          }
+        }
+      `,
+      options: ['getters'],
+    },
+    {
+      code: `
+        class A {
+          private readonly foo: string = 'bar';
+          constructor(foo: string) {
+            this['foo'] = foo;
+          }
+        }
+      `,
+      options: ['getters'],
+    },
+    {
+      code: `
+        class A {
+          private readonly foo: string = 'bar';
+          constructor(foo: string) {
+            const bar = new (class {
+              private readonly foo: string = 'baz';
+              constructor() {
+                this.foo = 'qux';
+              }
+            })();
+            this['foo'] = foo;
+          }
+        }
+      `,
+      options: ['getters'],
+    },
+    {
+      // https://github.com/typescript-eslint/typescript-eslint/issues/3602
+      // getter with override modifier should be ignored
+      code: `
+declare abstract class BaseClass {
+  get cursor(): string;
+}
+
+class ChildClass extends BaseClass {
+  override get cursor() {
+    return 'overridden value';
+  }
+}
+      `,
+    },
+    {
+      // https://github.com/typescript-eslint/typescript-eslint/issues/3602
+      // property with override modifier should be ignored
+      code: `
+declare abstract class BaseClass {
+  protected readonly foo: string;
+}
+
+class ChildClass extends BaseClass {
+  protected override readonly foo = 'bar';
+}
+      `,
+      options: ['getters'],
+    },
   ],
   invalid: [
     {
@@ -190,9 +298,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferFieldStyle',
           column: 7,
           line: 3,
+          messageId: 'preferFieldStyle',
           suggestions: [
             {
               messageId: 'preferFieldStyleSuggestion',
@@ -216,9 +324,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferFieldStyle',
           column: 7,
           line: 3,
+          messageId: 'preferFieldStyle',
           suggestions: [
             {
               messageId: 'preferFieldStyleSuggestion',
@@ -242,9 +350,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferFieldStyle',
           column: 14,
           line: 3,
+          messageId: 'preferFieldStyle',
           suggestions: [
             {
               messageId: 'preferFieldStyleSuggestion',
@@ -268,9 +376,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferFieldStyle',
           column: 21,
           line: 3,
+          messageId: 'preferFieldStyle',
           suggestions: [
             {
               messageId: 'preferFieldStyleSuggestion',
@@ -294,9 +402,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferFieldStyle',
           column: 15,
           line: 3,
+          messageId: 'preferFieldStyle',
           suggestions: [
             {
               messageId: 'preferFieldStyleSuggestion',
@@ -320,9 +428,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferFieldStyle',
           column: 15,
           line: 3,
+          messageId: 'preferFieldStyle',
           suggestions: [
             {
               messageId: 'preferFieldStyleSuggestion',
@@ -344,9 +452,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferGetterStyle',
           column: 20,
           line: 3,
+          messageId: 'preferGetterStyle',
           suggestions: [
             {
               messageId: 'preferGetterStyleSuggestion',
@@ -369,9 +477,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferGetterStyle',
           column: 12,
           line: 3,
+          messageId: 'preferGetterStyle',
           suggestions: [
             {
               messageId: 'preferGetterStyleSuggestion',
@@ -394,9 +502,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferGetterStyle',
           column: 12,
           line: 3,
+          messageId: 'preferGetterStyle',
           suggestions: [
             {
               messageId: 'preferGetterStyleSuggestion',
@@ -419,9 +527,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferGetterStyle',
           column: 19,
           line: 3,
+          messageId: 'preferGetterStyle',
           suggestions: [
             {
               messageId: 'preferGetterStyleSuggestion',
@@ -446,9 +554,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferFieldStyle',
           column: 17,
           line: 3,
+          messageId: 'preferFieldStyle',
           suggestions: [
             {
               messageId: 'preferFieldStyleSuggestion',
@@ -471,9 +579,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferGetterStyle',
           column: 22,
           line: 3,
+          messageId: 'preferGetterStyle',
           suggestions: [
             {
               messageId: 'preferGetterStyleSuggestion',
@@ -498,9 +606,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferFieldStyle',
           column: 21,
           line: 3,
+          messageId: 'preferFieldStyle',
           suggestions: [
             {
               messageId: 'preferFieldStyleSuggestion',
@@ -522,9 +630,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferGetterStyle',
           column: 26,
           line: 3,
+          messageId: 'preferGetterStyle',
           suggestions: [
             {
               messageId: 'preferGetterStyleSuggestion',
@@ -556,9 +664,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferFieldStyle',
           column: 14,
           line: 3,
+          messageId: 'preferFieldStyle',
           suggestions: [
             {
               messageId: 'preferFieldStyleSuggestion',
@@ -594,9 +702,9 @@ class Mx {
       `,
       errors: [
         {
-          messageId: 'preferGetterStyle',
           column: 19,
           line: 3,
+          messageId: 'preferGetterStyle',
           suggestions: [
             {
               messageId: 'preferGetterStyleSuggestion',
@@ -610,6 +718,127 @@ class Mx {
       }
     }
   \`; }
+}
+      `,
+            },
+          ],
+        },
+      ],
+      options: ['getters'],
+    },
+    {
+      code: `
+class A {
+  private readonly foo: string = 'bar';
+  constructor(foo: string) {
+    const bar = new (class {
+      private readonly foo: string = 'baz';
+      constructor() {
+        this.foo = 'qux';
+      }
+    })();
+  }
+}
+      `,
+      errors: [
+        {
+          column: 20,
+          line: 3,
+          messageId: 'preferGetterStyle',
+          suggestions: [
+            {
+              messageId: 'preferGetterStyleSuggestion',
+              output: `
+class A {
+  private get foo() { return 'bar'; }
+  constructor(foo: string) {
+    const bar = new (class {
+      private readonly foo: string = 'baz';
+      constructor() {
+        this.foo = 'qux';
+      }
+    })();
+  }
+}
+      `,
+            },
+          ],
+        },
+      ],
+      options: ['getters'],
+    },
+    {
+      code: `
+class A {
+  private readonly ['foo']: string = 'bar';
+  constructor(foo: string) {
+    const bar = new (class {
+      private readonly foo: string = 'baz';
+      constructor() {}
+    })();
+
+    if (bar) {
+      this.foo = 'baz';
+    }
+  }
+}
+      `,
+      errors: [
+        {
+          column: 24,
+          line: 6,
+          messageId: 'preferGetterStyle',
+          suggestions: [
+            {
+              messageId: 'preferGetterStyleSuggestion',
+              output: `
+class A {
+  private readonly ['foo']: string = 'bar';
+  constructor(foo: string) {
+    const bar = new (class {
+      private get foo() { return 'baz'; }
+      constructor() {}
+    })();
+
+    if (bar) {
+      this.foo = 'baz';
+    }
+  }
+}
+      `,
+            },
+          ],
+        },
+      ],
+      options: ['getters'],
+    },
+    {
+      code: `
+class A {
+  private readonly foo: string = 'bar';
+  constructor(foo: string) {
+    function func() {
+      this.foo = 'aa';
+    }
+  }
+}
+      `,
+      errors: [
+        {
+          column: 20,
+          line: 3,
+          messageId: 'preferGetterStyle',
+          suggestions: [
+            {
+              messageId: 'preferGetterStyleSuggestion',
+              output: `
+class A {
+  private get foo() { return 'bar'; }
+  constructor(foo: string) {
+    function func() {
+      this.foo = 'aa';
+    }
+  }
 }
       `,
             },

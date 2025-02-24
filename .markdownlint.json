@@ -62,6 +62,7 @@
     "allowed_elements": [
       "a",
       "br",
+      "code",
       "details",
       "em",
       "figcaption",
@@ -73,7 +74,8 @@
       "summary",
       "sup",
       "TabItem",
-      "Tabs"
+      "Tabs",
+      "TypeScriptOverlap"
     ]
   },
   // MD034/no-bare-urls - Bare URL used
@@ -99,9 +101,8 @@
   // MD044/proper-names - Proper names should have the correct capitalization
   "MD044": {
     "names": [
-      "eslint-scope",
-      "eslint-plugin",
-      "eslint-recommended",
+      "eslint-",
+      "eslint.style",
       "ESLint",
       "JavaScript",
       "TSLint",
