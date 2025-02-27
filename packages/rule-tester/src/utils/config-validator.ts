@@ -1,34 +1,33 @@
 // Forked from https://github.com/eslint/eslint/blob/ad9dd6a933fd098a0d99c6a9aa059850535c23ee/lib/shared/config-validator.js
 
-import util from 'node:util';
-
-import { Legacy } from '@eslint/eslintrc';
 import type { AnyRuleModule, Linter } from '@typescript-eslint/utils/ts-eslint';
 import type {
   AdditionalPropertiesParams,
   ErrorObject as AjvErrorObject,
   ValidateFunction,
 } from 'ajv';
+
 import { builtinRules } from 'eslint/use-at-your-own-risk';
+import util from 'node:util';
 
 import type { TesterConfigWithDefaults } from '../types';
+
 import { ajvBuilder } from './ajv';
-import { configSchema } from './config-schema';
 import { emitDeprecationWarning } from './deprecation-warnings';
+import { flatConfigSchema } from './flat-config-schema';
 import { getRuleOptionsSchema } from './getRuleOptionsSchema';
 import { hasOwnProperty } from './hasOwnProperty';
 
 type GetAdditionalRule = (ruleId: string) => AnyRuleModule | null;
 
-const { ConfigOps, environments: BuiltInEnvironments } = Legacy;
 const ajv = ajvBuilder();
 const ruleValidators = new WeakMap<AnyRuleModule, ValidateFunction>();
 
-let validateSchema: ValidateFunction;
+let validateSchema: ValidateFunction | undefined;
 const severityMap = {
   error: 2,
-  warn: 1,
   off: 0,
+  warn: 1,
 } as const;
 
 /**
@@ -40,8 +39,10 @@ function validateRuleSeverity(options: Linter.RuleEntry): number | string {
   const severity = Array.isArray(options) ? options[0] : options;
   const normSeverity =
     typeof severity === 'string'
-      ? severityMap[severity.toLowerCase() as Linter.SeverityString]
-      : severity;
+      ? (severityMap[severity.toLowerCase() as Linter.SeverityString] as
+          | number
+          | undefined)
+      : (severity as number);
 
   if (normSeverity === 0 || normSeverity === 1 || normSeverity === 2) {
     return normSeverity;
@@ -50,8 +51,8 @@ function validateRuleSeverity(options: Linter.RuleEntry): number | string {
   throw new Error(
     `\tSeverity should be one of the following: 0 = off, 1 = warn, 2 = error (you passed '${util
       .inspect(severity)
-      .replace(/'/gu, '"')
-      .replace(/\n/gu, '')}').\n`,
+      .replaceAll("'", '"')
+      .replaceAll('\n', '')}').\n`,
   );
 }
 
@@ -76,7 +77,7 @@ function validateRuleSchema(
   const validateRule = ruleValidators.get(rule);
 
   if (validateRule) {
-    validateRule(localOptions);
+    void validateRule(localOptions);
     if (validateRule.errors) {
       throw new Error(
         validateRule.errors
@@ -94,7 +95,7 @@ function validateRuleSchema(
  * Validates a rule's options against its schema.
  * @param rule The rule that the config is being validated for
  * @param ruleId The rule's unique name.
- * @param {Array|number} options The given options for the rule.
+ * @param options The given options for the rule.
  * @param source The name of the configuration source to report in any errors. If null or undefined,
  * no source is prepended to the message.
  * @throws {Error} Upon any bad rule configuration.
@@ -125,31 +126,6 @@ function validateRuleOptions(
 }
 
 /**
- * Validates an environment object
- * @param environment The environment config object to validate.
- * @param source The name of the configuration source to report in any errors.
- */
-function validateEnvironment(
-  environment: Linter.EnvironmentConfig | undefined,
-  source: string,
-): void {
-  // not having an environment is ok
-  if (!environment) {
-    return;
-  }
-
-  Object.keys(environment).forEach(id => {
-    const env = BuiltInEnvironments.get(id) ?? null;
-
-    if (!env) {
-      const message = `${source}:\n\tEnvironment key "${id}" is unknown\n`;
-
-      throw new Error(message);
-    }
-  });
-}
-
-/**
  * Validates a rules config object
  * @param rulesConfig The rules config object to validate.
  * @param source The name of the configuration source to report in any errors.
@@ -170,36 +146,9 @@ function validateRules(
       return;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     validateRuleOptions(rule, id, rulesConfig[id]!, source);
   });
-}
-
-/**
- * Validates a `globals` section of a config file
- * @param globalsConfig The `globals` section
- * @param source The name of the configuration source to report in the event of an error.
- */
-function validateGlobals(
-  globalsConfig: Linter.GlobalsConfig | undefined,
-  source: string | null = null,
-): void {
-  if (!globalsConfig) {
-    return;
-  }
-
-  Object.entries(globalsConfig).forEach(
-    ([configuredGlobal, configuredValue]) => {
-      try {
-        ConfigOps.normalizeConfigGlobal(configuredValue);
-      } catch (err) {
-        throw new Error(
-          `ESLint configuration of global '${configuredGlobal}' in ${source} is invalid:\n${
-            (err as Error).message
-          }`,
-        );
-      }
-    },
-  );
 }
 
 /**
@@ -248,11 +197,12 @@ function validateConfigSchema(
   config: TesterConfigWithDefaults,
   source: string,
 ): void {
-  validateSchema = validateSchema || ajv.compile(configSchema);
+  validateSchema ??= ajv.compile(flatConfigSchema);
 
   if (!validateSchema(config)) {
     throw new Error(
       `ESLint configuration in ${source} is invalid:\n${formatErrors(
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         validateSchema.errors!,
       )}`,
     );
@@ -277,12 +227,4 @@ export function validate(
 ): void {
   validateConfigSchema(config, source);
   validateRules(config.rules, source, getAdditionalRule);
-  validateEnvironment(config.env, source);
-  validateGlobals(config.globals, source);
-
-  for (const override of config.overrides ?? []) {
-    validateRules(override.rules, source, getAdditionalRule);
-    validateEnvironment(override.env, source);
-    validateGlobals(config.globals, source);
-  }
 }

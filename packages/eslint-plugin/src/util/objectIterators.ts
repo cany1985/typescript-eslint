@@ -1,4 +1,4 @@
-function objectForEachKey<T extends Record<string, unknown>>(
+export function objectForEachKey<T extends Record<string, unknown>>(
   obj: T,
   callback: (key: keyof T) => void,
 ): void {
@@ -8,27 +8,25 @@ function objectForEachKey<T extends Record<string, unknown>>(
   }
 }
 
-function objectMapKey<T extends Record<string, unknown>, TReturn>(
+export function objectMapKey<T extends Record<string, unknown>, Return>(
   obj: T,
-  callback: (key: keyof T) => TReturn,
-): TReturn[] {
-  const values: TReturn[] = [];
+  callback: (key: keyof T) => Return,
+): Return[] {
+  const values: Return[] = [];
   objectForEachKey(obj, key => {
     values.push(callback(key));
   });
   return values;
 }
 
-function objectReduceKey<T extends Record<string, unknown>, TAccumulator>(
+export function objectReduceKey<T extends Record<string, unknown>, Accumulator>(
   obj: T,
-  callback: (acc: TAccumulator, key: keyof T) => TAccumulator,
-  initial: TAccumulator,
-): TAccumulator {
+  callback: (acc: Accumulator, key: keyof T) => Accumulator,
+  initial: Accumulator,
+): Accumulator {
   let accumulator = initial;
   objectForEachKey(obj, key => {
     accumulator = callback(accumulator, key);
   });
   return accumulator;
 }
-
-export { objectForEachKey, objectMapKey, objectReduceKey };

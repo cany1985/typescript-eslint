@@ -1,19 +1,25 @@
 import type { TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import {
+  createRule,
+  getFunctionHeadLoc,
+  getFunctionNameWithKind,
+  getStaticMemberAccessValue,
+} from '../util';
 
-type Options = [
+export type Options = [
   {
-    exceptMethods?: string[];
     enforceForClassFields?: boolean;
+    exceptMethods?: string[];
+    ignoreClassesThatImplementAnInterface?: boolean | 'public-fields';
     ignoreOverrideMethods?: boolean;
-    ignoreClassesThatImplementAnInterface?: boolean;
   },
 ];
-type MessageIds = 'missingThis';
+export type MessageIds = 'missingThis';
 
-export default util.createRule<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: 'class-methods-use-this',
   meta: {
     type: 'suggestion',
@@ -22,42 +28,52 @@ export default util.createRule<Options, MessageIds>({
       extendsBaseRule: true,
       requiresTypeChecking: false,
     },
-    fixable: 'code',
-    hasSuggestions: false,
+    messages: {
+      missingThis: "Expected 'this' to be used by class {{name}}.",
+    },
     schema: [
       {
         type: 'object',
+        additionalProperties: false,
         properties: {
+          enforceForClassFields: {
+            type: 'boolean',
+            default: true,
+            description:
+              'Enforces that functions used as instance field initializers utilize `this`.',
+          },
           exceptMethods: {
             type: 'array',
             description:
-              'Allows specified method names to be ignored with this rule',
+              'Allows specified method names to be ignored with this rule.',
             items: {
               type: 'string',
             },
           },
-          enforceForClassFields: {
-            type: 'boolean',
+          ignoreClassesThatImplementAnInterface: {
             description:
-              'Enforces that functions used as instance field initializers utilize `this`',
-            default: true,
+              'Whether to ignore class members that are defined within a class that `implements` a type.',
+            oneOf: [
+              {
+                type: 'boolean',
+                description: 'Ignore all classes that implement an interface',
+              },
+              {
+                type: 'string',
+                description:
+                  'Ignore only the public fields of classes that implement an interface',
+                enum: ['public-fields'],
+              },
+            ],
           },
           ignoreOverrideMethods: {
             type: 'boolean',
-            description: 'Ingore members marked with the `override` modifier',
-          },
-          ignoreClassesThatImplementAnInterface: {
-            type: 'boolean',
             description:
-              'Ignore classes that specifically implement some interface',
+              'Whether to ignore members marked with the `override` modifier.',
           },
         },
-        additionalProperties: false,
       },
     ],
-    messages: {
-      missingThis: "Expected 'this' to be used by class {{name}}.",
-    },
   },
   defaultOptions: [
     {
@@ -81,39 +97,41 @@ export default util.createRule<Options, MessageIds>({
     const exceptMethods = new Set(exceptMethodsRaw);
     type Stack =
       | {
-          member: null;
           class: null;
+          member: null;
           parent: Stack | undefined;
           usesThis: boolean;
         }
       | {
-          member: TSESTree.MethodDefinition | TSESTree.PropertyDefinition;
           class: TSESTree.ClassDeclaration | TSESTree.ClassExpression;
+          member:
+            | TSESTree.AccessorProperty
+            | TSESTree.MethodDefinition
+            | TSESTree.PropertyDefinition;
           parent: Stack | undefined;
           usesThis: boolean;
         };
     let stack: Stack | undefined;
 
-    const sourceCode = context.getSourceCode();
-
     function pushContext(
-      member?: TSESTree.MethodDefinition | TSESTree.PropertyDefinition,
+      member?:
+        | TSESTree.AccessorProperty
+        | TSESTree.MethodDefinition
+        | TSESTree.PropertyDefinition,
     ): void {
       if (member?.parent.type === AST_NODE_TYPES.ClassBody) {
         stack = {
+          class: member.parent.parent,
           member,
-          class: member.parent.parent as
-            | TSESTree.ClassDeclaration
-            | TSESTree.ClassExpression,
-          usesThis: false,
           parent: stack,
+          usesThis: false,
         };
       } else {
         stack = {
-          member: null,
           class: null,
-          usesThis: false,
+          member: null,
           parent: stack,
+          usesThis: false,
         };
       }
     }
@@ -123,7 +141,8 @@ export default util.createRule<Options, MessageIds>({
     ): void {
       if (
         node.parent.type === AST_NODE_TYPES.MethodDefinition ||
-        node.parent.type === AST_NODE_TYPES.PropertyDefinition
+        node.parent.type === AST_NODE_TYPES.PropertyDefinition ||
+        node.parent.type === AST_NODE_TYPES.AccessorProperty
       ) {
         pushContext(node.parent);
       } else {
@@ -140,6 +159,16 @@ export default util.createRule<Options, MessageIds>({
       return oldStack;
     }
 
+    function isPublicField(
+      accessibility: TSESTree.Accessibility | undefined,
+    ): boolean {
+      if (!accessibility || accessibility === 'public') {
+        return true;
+      }
+
+      return false;
+    }
+
     /**
      * Check if the node is an instance method not excluded by config
      */
@@ -150,7 +179,8 @@ export default util.createRule<Options, MessageIds>({
         node.static ||
         (node.type === AST_NODE_TYPES.MethodDefinition &&
           node.kind === 'constructor') ||
-        (node.type === AST_NODE_TYPES.PropertyDefinition &&
+        ((node.type === AST_NODE_TYPES.PropertyDefinition ||
+          node.type === AST_NODE_TYPES.AccessorProperty) &&
           !enforceForClassFields)
       ) {
         return false;
@@ -162,12 +192,11 @@ export default util.createRule<Options, MessageIds>({
 
       const hashIfNeeded =
         node.key.type === AST_NODE_TYPES.PrivateIdentifier ? '#' : '';
-      const name =
-        node.key.type === AST_NODE_TYPES.Literal
-          ? util.getStaticStringValue(node.key)
-          : node.key.name || '';
+      const name = getStaticMemberAccessValue(node, context);
 
-      return !exceptMethods.has(hashIfNeeded + (name ?? ''));
+      return (
+        typeof name !== 'string' || !exceptMethods.has(hashIfNeeded + name)
+      );
     }
 
     /**
@@ -181,22 +210,24 @@ export default util.createRule<Options, MessageIds>({
       const stackContext = popContext();
       if (
         stackContext?.member == null ||
-        stackContext.class == null ||
         stackContext.usesThis ||
         (ignoreOverrideMethods && stackContext.member.override) ||
-        (ignoreClassesThatImplementAnInterface &&
-          stackContext.class.implements != null)
+        (ignoreClassesThatImplementAnInterface === true &&
+          stackContext.class.implements.length > 0) ||
+        (ignoreClassesThatImplementAnInterface === 'public-fields' &&
+          stackContext.class.implements.length > 0 &&
+          isPublicField(stackContext.member.accessibility))
       ) {
         return;
       }
 
       if (isIncludedInstanceMethod(stackContext.member)) {
         context.report({
+          loc: getFunctionHeadLoc(node, context.sourceCode),
           node,
-          loc: util.getFunctionHeadLoc(node, sourceCode),
           messageId: 'missingThis',
           data: {
-            name: util.getFunctionNameWithKind(node),
+            name: getFunctionNameWithKind(node),
           },
         });
       }
@@ -219,6 +250,16 @@ export default util.createRule<Options, MessageIds>({
       },
       ...(enforceForClassFields
         ? {
+            'AccessorProperty > ArrowFunctionExpression.value'(
+              node: TSESTree.ArrowFunctionExpression,
+            ): void {
+              enterFunction(node);
+            },
+            'AccessorProperty > ArrowFunctionExpression.value:exit'(
+              node: TSESTree.ArrowFunctionExpression,
+            ): void {
+              exitFunction(node);
+            },
             'PropertyDefinition > ArrowFunctionExpression.value'(
               node: TSESTree.ArrowFunctionExpression,
             ): void {
@@ -235,11 +276,17 @@ export default util.createRule<Options, MessageIds>({
       /*
        * Class field value are implicit functions.
        */
-      'PropertyDefinition > *.key:exit'(): void {
+      'AccessorProperty:exit'(): void {
+        popContext();
+      },
+      'AccessorProperty > *.key:exit'(): void {
         pushContext();
       },
       'PropertyDefinition:exit'(): void {
         popContext();
+      },
+      'PropertyDefinition > *.key:exit'(): void {
+        pushContext();
       },
 
       /*

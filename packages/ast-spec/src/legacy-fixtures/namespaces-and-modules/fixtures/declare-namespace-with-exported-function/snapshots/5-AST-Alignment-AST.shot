@@ -15,7 +15,8 @@ exports[`AST Fixtures legacy-fixtures namespaces-and-modules declare-namespace-w
           body: Array [
             ExportNamedDeclaration {
               type: 'ExportNamedDeclaration',
-              assertions: Array [],
+-             attributes: Array [],
++             assertions: Array [],
               declaration: TSDeclareFunction {
                 type: 'TSDeclareFunction',
                 async: false,
@@ -166,7 +167,7 @@ exports[`AST Fixtures legacy-fixtures namespaces-and-modules declare-namespace-w
             end: { column: 20, line: 3 },
           },
         },
--       kind: 'namespace',
+        kind: 'namespace',
 
         range: [73, 157],
         loc: {

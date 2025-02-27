@@ -1,9 +1,10 @@
 import type { TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import { createRule } from '../util';
 
-export default util.createRule({
+export default createRule({
   name: 'no-duplicate-enum-values',
   meta: {
     type: 'problem',
@@ -35,13 +36,23 @@ export default util.createRule({
       );
     }
 
+    function isStaticTemplateLiteral(
+      node: TSESTree.Expression,
+    ): node is TSESTree.TemplateLiteral {
+      return (
+        node.type === AST_NODE_TYPES.TemplateLiteral &&
+        node.expressions.length === 0 &&
+        node.quasis.length === 1
+      );
+    }
+
     return {
       TSEnumDeclaration(node: TSESTree.TSEnumDeclaration): void {
-        const enumMembers = node.members;
+        const enumMembers = node.body.members;
         const seenValues = new Set<number | string>();
 
         enumMembers.forEach(member => {
-          if (member.initializer === undefined) {
+          if (member.initializer == null) {
             return;
           }
 
@@ -50,9 +61,11 @@ export default util.createRule({
             value = String(member.initializer.value);
           } else if (isNumberLiteral(member.initializer)) {
             value = Number(member.initializer.value);
+          } else if (isStaticTemplateLiteral(member.initializer)) {
+            value = member.initializer.quasis[0].value.cooked;
           }
 
-          if (value === undefined) {
+          if (value == null) {
             return;
           }
 

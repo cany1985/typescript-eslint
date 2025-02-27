@@ -1,19 +1,28 @@
 import type { TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import type { TypeOrValueSpecifier } from '../util';
 
-type Options = [
+import {
+  createRule,
+  getParserServices,
+  isTypeReadonly,
+  readonlynessOptionsDefaults,
+  readonlynessOptionsSchema,
+} from '../util';
+
+export type Options = [
   {
-    allow?: util.TypeOrValueSpecifier[];
+    allow?: TypeOrValueSpecifier[];
     checkParameterProperties?: boolean;
     ignoreInferredTypes?: boolean;
     treatMethodsAsReadonly?: boolean;
   },
 ];
-type MessageIds = 'shouldBeReadonly';
+export type MessageIds = 'shouldBeReadonly';
 
-export default util.createRule<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: 'prefer-readonly-parameter-types',
   meta: {
     type: 'suggestion',
@@ -22,34 +31,43 @@ export default util.createRule<Options, MessageIds>({
         'Require function parameters to be typed as `readonly` to prevent accidental mutation of inputs',
       requiresTypeChecking: true,
     },
+    messages: {
+      shouldBeReadonly: 'Parameter should be a read only type.',
+    },
     schema: [
       {
         type: 'object',
         additionalProperties: false,
         properties: {
-          allow: util.readonlynessOptionsSchema.properties.allow,
+          allow: {
+            ...readonlynessOptionsSchema.properties.allow,
+            description: 'An array of type specifiers to ignore.',
+          },
           checkParameterProperties: {
             type: 'boolean',
+            description: 'Whether to check class parameter properties.',
           },
           ignoreInferredTypes: {
             type: 'boolean',
+            description:
+              "Whether to ignore parameters which don't explicitly specify a type.",
           },
-          treatMethodsAsReadonly:
-            util.readonlynessOptionsSchema.properties.treatMethodsAsReadonly,
+          treatMethodsAsReadonly: {
+            ...readonlynessOptionsSchema.properties.treatMethodsAsReadonly,
+            description:
+              'Whether to treat all mutable methods as though they are readonly.',
+          },
         },
       },
     ],
-    messages: {
-      shouldBeReadonly: 'Parameter should be a read only type.',
-    },
   },
   defaultOptions: [
     {
-      allow: util.readonlynessOptionsDefaults.allow,
+      allow: readonlynessOptionsDefaults.allow,
       checkParameterProperties: true,
       ignoreInferredTypes: false,
       treatMethodsAsReadonly:
-        util.readonlynessOptionsDefaults.treatMethodsAsReadonly,
+        readonlynessOptionsDefaults.treatMethodsAsReadonly,
     },
   ],
   create(
@@ -63,7 +81,7 @@ export default util.createRule<Options, MessageIds>({
       },
     ],
   ) {
-    const services = util.getParserServices(context);
+    const services = getParserServices(context);
 
     return {
       [[
@@ -106,9 +124,9 @@ export default util.createRule<Options, MessageIds>({
           }
 
           const type = services.getTypeAtLocation(actualParam);
-          const isReadOnly = util.isTypeReadonly(services.program, type, {
-            treatMethodsAsReadonly: treatMethodsAsReadonly!,
+          const isReadOnly = isTypeReadonly(services.program, type, {
             allow,
+            treatMethodsAsReadonly: !!treatMethodsAsReadonly,
           });
 
           if (!isReadOnly) {

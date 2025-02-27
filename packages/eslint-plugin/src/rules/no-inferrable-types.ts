@@ -1,18 +1,24 @@
 /* eslint-disable @typescript-eslint/internal/prefer-ast-types-enum */
 import type { TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import {
+  createRule,
+  nullThrows,
+  NullThrowsReasons,
+  skipChainExpression,
+} from '../util';
 
-type Options = [
+export type Options = [
   {
     ignoreParameters?: boolean;
     ignoreProperties?: boolean;
   },
 ];
-type MessageIds = 'noInferrableType';
+export type MessageIds = 'noInferrableType';
 
-export default util.createRule<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: 'no-inferrable-types',
   meta: {
     type: 'suggestion',
@@ -29,15 +35,17 @@ export default util.createRule<Options, MessageIds>({
     schema: [
       {
         type: 'object',
+        additionalProperties: false,
         properties: {
           ignoreParameters: {
             type: 'boolean',
+            description: 'Whether to ignore function parameters.',
           },
           ignoreProperties: {
             type: 'boolean',
+            description: 'Whether to ignore class properties.',
           },
         },
-        additionalProperties: false,
       },
     ],
   },
@@ -48,20 +56,16 @@ export default util.createRule<Options, MessageIds>({
     },
   ],
   create(context, [{ ignoreParameters, ignoreProperties }]) {
-    const sourceCode = context.getSourceCode();
-
     function isFunctionCall(
       init: TSESTree.Expression,
       callName: string,
     ): boolean {
-      if (init.type === AST_NODE_TYPES.ChainExpression) {
-        return isFunctionCall(init.expression, callName);
-      }
+      const node = skipChainExpression(init);
 
       return (
-        init.type === AST_NODE_TYPES.CallExpression &&
-        init.callee.type === AST_NODE_TYPES.Identifier &&
-        init.callee.name === callName
+        node.type === AST_NODE_TYPES.CallExpression &&
+        node.callee.type === AST_NODE_TYPES.Identifier &&
+        node.callee.name === callName
       );
     }
     function isLiteral(init: TSESTree.Expression, typeName: string): boolean {
@@ -99,8 +103,8 @@ export default util.createRule<Options, MessageIds>({
     const keywordMap = {
       [AST_NODE_TYPES.TSBigIntKeyword]: 'bigint',
       [AST_NODE_TYPES.TSBooleanKeyword]: 'boolean',
-      [AST_NODE_TYPES.TSNumberKeyword]: 'number',
       [AST_NODE_TYPES.TSNullKeyword]: 'null',
+      [AST_NODE_TYPES.TSNumberKeyword]: 'number',
       [AST_NODE_TYPES.TSStringKeyword]: 'string',
       [AST_NODE_TYPES.TSSymbolKeyword]: 'symbol',
       [AST_NODE_TYPES.TSUndefinedKeyword]: 'undefined',
@@ -122,8 +126,7 @@ export default util.createRule<Options, MessageIds>({
 
           return (
             isFunctionCall(unwrappedInit, 'BigInt') ||
-            (unwrappedInit.type === AST_NODE_TYPES.Literal &&
-              'bigint' in unwrappedInit)
+            unwrappedInit.type === AST_NODE_TYPES.Literal
           );
         }
 
@@ -193,13 +196,14 @@ export default util.createRule<Options, MessageIds>({
      */
     function reportInferrableType(
       node:
+        | TSESTree.AccessorProperty
         | TSESTree.Parameter
         | TSESTree.PropertyDefinition
         | TSESTree.VariableDeclarator,
       typeNode: TSESTree.TSTypeAnnotation | undefined,
       initNode: TSESTree.Expression | null | undefined,
     ): void {
-      if (!typeNode || !initNode || !typeNode.typeAnnotation) {
+      if (!typeNode || !initNode) {
         return;
       }
 
@@ -225,7 +229,12 @@ export default util.createRule<Options, MessageIds>({
               node.left.optional) ||
             (node.type === AST_NODE_TYPES.PropertyDefinition && node.definite)
           ) {
-            yield fixer.remove(sourceCode.getTokenBefore(typeNode)!);
+            yield fixer.remove(
+              nullThrows(
+                context.sourceCode.getTokenBefore(typeNode),
+                NullThrowsReasons.MissingToken('token before', 'type node'),
+              ),
+            );
           }
           yield fixer.remove(typeNode);
         },
@@ -235,9 +244,6 @@ export default util.createRule<Options, MessageIds>({
     function inferrableVariableVisitor(
       node: TSESTree.VariableDeclarator,
     ): void {
-      if (!node.id) {
-        return;
-      }
       reportInferrableType(node, node.id.typeAnnotation, node.init);
     }
 
@@ -247,7 +253,7 @@ export default util.createRule<Options, MessageIds>({
         | TSESTree.FunctionDeclaration
         | TSESTree.FunctionExpression,
     ): void {
-      if (ignoreParameters || !node.params) {
+      if (ignoreParameters) {
         return;
       }
 
@@ -256,18 +262,14 @@ export default util.createRule<Options, MessageIds>({
           param = param.parameter;
         }
 
-        if (
-          param.type === AST_NODE_TYPES.AssignmentPattern &&
-          param.left &&
-          param.right
-        ) {
+        if (param.type === AST_NODE_TYPES.AssignmentPattern) {
           reportInferrableType(param, param.left.typeAnnotation, param.right);
         }
       });
     }
 
     function inferrablePropertyVisitor(
-      node: TSESTree.PropertyDefinition,
+      node: TSESTree.AccessorProperty | TSESTree.PropertyDefinition,
     ): void {
       // We ignore `readonly` because of Microsoft/TypeScript#14416
       // Essentially a readonly property without a type
@@ -280,11 +282,12 @@ export default util.createRule<Options, MessageIds>({
     }
 
     return {
-      VariableDeclarator: inferrableVariableVisitor,
-      FunctionExpression: inferrableParameterVisitor,
-      FunctionDeclaration: inferrableParameterVisitor,
+      AccessorProperty: inferrablePropertyVisitor,
       ArrowFunctionExpression: inferrableParameterVisitor,
+      FunctionDeclaration: inferrableParameterVisitor,
+      FunctionExpression: inferrableParameterVisitor,
       PropertyDefinition: inferrablePropertyVisitor,
+      VariableDeclarator: inferrableVariableVisitor,
     };
   },
 });

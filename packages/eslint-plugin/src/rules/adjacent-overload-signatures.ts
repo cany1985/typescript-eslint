@@ -1,7 +1,8 @@
 import type { TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import { createRule, getNameFromMember, MemberNameType } from '../util';
 
 type RuleNode =
   | TSESTree.BlockStatement
@@ -10,12 +11,17 @@ type RuleNode =
   | TSESTree.TSInterfaceBody
   | TSESTree.TSModuleBlock
   | TSESTree.TSTypeLiteral;
+
 type Member =
   | TSESTree.ClassElement
   | TSESTree.ProgramStatement
   | TSESTree.TypeElement;
 
-export default util.createRule({
+type MemberDeclaration =
+  | TSESTree.DefaultExportDeclarations
+  | TSESTree.NamedExportDeclarations;
+
+export default createRule({
   name: 'adjacent-overload-signatures',
   meta: {
     type: 'suggestion',
@@ -23,20 +29,18 @@ export default util.createRule({
       description: 'Require that function overload signatures be consecutive',
       recommended: 'stylistic',
     },
-    schema: [],
     messages: {
       adjacentSignature: 'All {{name}} signatures should be adjacent.',
     },
+    schema: [],
   },
   defaultOptions: [],
   create(context) {
-    const sourceCode = context.getSourceCode();
-
     interface Method {
-      name: string;
-      static: boolean;
       callSignature: boolean;
-      type: util.MemberNameType;
+      name: string;
+      static?: boolean;
+      type: MemberNameType;
     }
 
     /**
@@ -44,13 +48,9 @@ export default util.createRule({
      * @param member the member being processed.
      * @returns the name and attribute of the member or null if it's a member not relevant to the rule.
      */
-    function getMemberMethod(member: TSESTree.Node): Method | null {
-      if (!member) {
-        return null;
-      }
-
-      const isStatic = 'static' in member && !!member.static;
-
+    function getMemberMethod(
+      member: Member | MemberDeclaration,
+    ): Method | null {
       switch (member.type) {
         case AST_NODE_TYPES.ExportDefaultDeclaration:
         case AST_NODE_TYPES.ExportNamedDeclaration: {
@@ -70,35 +70,27 @@ export default util.createRule({
           }
           return {
             name,
-            static: isStatic,
+            type: MemberNameType.Normal,
             callSignature: false,
-            type: util.MemberNameType.Normal,
           };
         }
         case AST_NODE_TYPES.TSMethodSignature:
+        case AST_NODE_TYPES.MethodDefinition:
           return {
-            ...util.getNameFromMember(member, sourceCode),
-            static: isStatic,
+            ...getNameFromMember(member, context.sourceCode),
             callSignature: false,
+            static: !!member.static,
           };
         case AST_NODE_TYPES.TSCallSignatureDeclaration:
           return {
             name: 'call',
-            static: isStatic,
+            type: MemberNameType.Normal,
             callSignature: true,
-            type: util.MemberNameType.Normal,
           };
         case AST_NODE_TYPES.TSConstructSignatureDeclaration:
           return {
             name: 'new',
-            static: isStatic,
-            callSignature: false,
-            type: util.MemberNameType.Normal,
-          };
-        case AST_NODE_TYPES.MethodDefinition:
-          return {
-            ...util.getNameFromMember(member, sourceCode),
-            static: isStatic,
+            type: MemberNameType.Normal,
             callSignature: false,
           };
       }
@@ -130,51 +122,45 @@ export default util.createRule({
       }
     }
 
-    /**
-     * Check the body for overload methods.
-     * @param {ASTNode} node the body to be inspected.
-     */
     function checkBodyForOverloadMethods(node: RuleNode): void {
       const members = getMembers(node);
 
-      if (members) {
-        let lastMethod: Method | null = null;
-        const seenMethods: Method[] = [];
+      let lastMethod: Method | null = null;
+      const seenMethods: Method[] = [];
 
-        members.forEach(member => {
-          const method = getMemberMethod(member);
-          if (method == null) {
-            lastMethod = null;
-            return;
-          }
+      members.forEach(member => {
+        const method = getMemberMethod(member);
+        if (method == null) {
+          lastMethod = null;
+          return;
+        }
 
-          const index = seenMethods.findIndex(seenMethod =>
-            isSameMethod(method, seenMethod),
-          );
-          if (index > -1 && !isSameMethod(method, lastMethod)) {
-            context.report({
-              node: member,
-              messageId: 'adjacentSignature',
-              data: {
-                name: `${method.static ? 'static ' : ''}${method.name}`,
-              },
-            });
-          } else if (index === -1) {
-            seenMethods.push(method);
-          }
+        const index = seenMethods.findIndex(seenMethod =>
+          isSameMethod(method, seenMethod),
+        );
+        if (index > -1 && !isSameMethod(method, lastMethod)) {
+          context.report({
+            node: member,
+            messageId: 'adjacentSignature',
+            data: {
+              name: `${method.static ? 'static ' : ''}${method.name}`,
+            },
+          });
+        } else if (index === -1) {
+          seenMethods.push(method);
+        }
 
-          lastMethod = method;
-        });
-      }
+        lastMethod = method;
+      });
     }
 
     return {
+      BlockStatement: checkBodyForOverloadMethods,
       ClassBody: checkBodyForOverloadMethods,
       Program: checkBodyForOverloadMethods,
+      TSInterfaceBody: checkBodyForOverloadMethods,
       TSModuleBlock: checkBodyForOverloadMethods,
       TSTypeLiteral: checkBodyForOverloadMethods,
-      TSInterfaceBody: checkBodyForOverloadMethods,
-      BlockStatement: checkBodyForOverloadMethods,
     };
   },
 });
