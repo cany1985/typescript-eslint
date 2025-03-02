@@ -6,10 +6,11 @@ import { getFixturesRootDir } from '../RuleTester';
 const rootPath = getFixturesRootDir();
 
 const ruleTester = new RuleTester({
-  parser: '@typescript-eslint/parser',
-  parserOptions: {
-    tsconfigRootDir: rootPath,
-    project: './tsconfig.json',
+  languageOptions: {
+    parserOptions: {
+      project: './tsconfig.json',
+      tsconfigRootDir: rootPath,
+    },
   },
 });
 
@@ -125,6 +126,13 @@ ruleTester.run('require-array-sort-compare', rule, {
         x.sort();
       `,
       options: [{ ignoreStringArrays: true }],
+    },
+    {
+      code: `
+        function f(a: number[]) {
+          a.toSorted((a, b) => a - b);
+        }
+      `,
     },
   ],
   invalid: [
@@ -253,6 +261,14 @@ ruleTester.run('require-array-sort-compare', rule, {
       `,
       errors: [{ messageId: 'requireCompare' }],
       options: [{ ignoreStringArrays: true }],
+    },
+    {
+      code: `
+        function f(a: number[]) {
+          a.toSorted();
+        }
+      `,
+      errors: [{ messageId: 'requireCompare' }],
     },
   ],
 });

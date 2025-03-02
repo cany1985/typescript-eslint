@@ -1,17 +1,16 @@
-/* eslint-disable eslint-comments/no-use */
 // this rule tests the spacing, which prettier will want to fix and break the tests
 /* eslint "@typescript-eslint/internal/plugin-test-formatting": ["error", { formatWithPrettier: false }] */
-/* eslint-enable eslint-comments/no-use */
 import { RuleTester } from '@typescript-eslint/rule-tester';
 
 import rule from '../../src/rules/no-useless-empty-export';
 
 const ruleTester = new RuleTester({
-  parserOptions: {
-    ecmaVersion: 2020,
-    sourceType: 'module',
+  languageOptions: {
+    parserOptions: {
+      ecmaVersion: 2020,
+      sourceType: 'module',
+    },
   },
-  parser: '@typescript-eslint/parser',
 });
 
 const error = {
@@ -37,6 +36,35 @@ ruleTester.run('no-useless-empty-export', rule, {
     `
       export {};
     `,
+    // https://github.com/microsoft/TypeScript/issues/38592
+    {
+      code: `
+        export type A = 1;
+        export {};
+      `,
+      filename: 'foo.d.ts',
+    },
+    {
+      code: `
+        export declare const a = 2;
+        export {};
+      `,
+      filename: 'foo.d.ts',
+    },
+    {
+      code: `
+        import type { A } from '_';
+        export {};
+      `,
+      filename: 'foo.d.ts',
+    },
+    {
+      code: `
+        import { A } from '_';
+        export {};
+      `,
+      filename: 'foo.d.ts',
+    },
   ],
   invalid: [
     {
@@ -119,6 +147,19 @@ export {};
       errors: [error],
       output: `
 import _ = require('_');
+
+      `,
+    },
+    {
+      code: `
+import _ = require('_');
+export {};
+export {};
+      `,
+      errors: [error, error],
+      output: `
+import _ = require('_');
+
 
       `,
     },

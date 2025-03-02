@@ -1,8 +1,8 @@
 import type { TSESLint, TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-import * as util from '../util';
-import { getEnumNames, typeNodeRequiresParentheses } from '../util';
+import { createRule, getEnumNames, typeNodeRequiresParentheses } from '../util';
 
 enum Group {
   conditional = 'conditional',
@@ -96,8 +96,20 @@ function getGroup(node: TSESTree.TypeNode): Group {
   }
 }
 
+function caseSensitiveSort(a: string, b: string): number {
+  if (a < b) {
+    return -1;
+  }
+
+  if (a > b) {
+    return 1;
+  }
+  return 0;
+}
+
 export type Options = [
   {
+    caseSensitive?: boolean;
     checkIntersections?: boolean;
     checkUnions?: boolean;
     groupOrder?: string[];
@@ -105,10 +117,11 @@ export type Options = [
 ];
 export type MessageIds = 'notSorted' | 'notSortedNamed' | 'suggestFix';
 
-export default util.createRule<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: 'sort-type-constituents',
   meta: {
     type: 'suggestion',
+    deprecated: true,
     docs: {
       description:
         'Enforce constituents of a type union/intersection to be sorted alphabetically',
@@ -120,22 +133,31 @@ export default util.createRule<Options, MessageIds>({
       notSortedNamed: '{{type}} type {{name}} constituents must be sorted.',
       suggestFix: 'Sort constituents of type (removes all comments).',
     },
+    replacedBy: [
+      'perfectionist/sort-intersection-types',
+      'perfectionist/sort-union-types',
+    ],
     schema: [
       {
         type: 'object',
         additionalProperties: false,
         properties: {
-          checkIntersections: {
-            description: 'Whether to check intersection types.',
+          caseSensitive: {
             type: 'boolean',
+            description:
+              'Whether to sort using case sensitive string comparisons.',
+          },
+          checkIntersections: {
+            type: 'boolean',
+            description: 'Whether to check intersection types (`&`).',
           },
           checkUnions: {
-            description: 'Whether to check union types.',
             type: 'boolean',
+            description: 'Whether to check union types (`|`).',
           },
           groupOrder: {
-            description: 'Ordering of the groups.',
             type: 'array',
+            description: 'Ordering of the groups.',
             items: {
               type: 'string',
               enum: getEnumNames(Group),
@@ -147,6 +169,7 @@ export default util.createRule<Options, MessageIds>({
   },
   defaultOptions: [
     {
+      caseSensitive: false,
       checkIntersections: true,
       checkUnions: true,
       groupOrder: [
@@ -165,12 +188,13 @@ export default util.createRule<Options, MessageIds>({
       ],
     },
   ],
-  create(context, [{ checkIntersections, checkUnions, groupOrder }]) {
-    const sourceCode = context.getSourceCode();
-
+  create(
+    context,
+    [{ caseSensitive, checkIntersections, checkUnions, groupOrder }],
+  ) {
     const collator = new Intl.Collator('en', {
-      sensitivity: 'base',
       numeric: true,
+      sensitivity: 'base',
     });
 
     function checkSorting(
@@ -179,14 +203,18 @@ export default util.createRule<Options, MessageIds>({
       const sourceOrder = node.types.map(type => {
         const group = groupOrder?.indexOf(getGroup(type)) ?? -1;
         return {
-          group: group === -1 ? Number.MAX_SAFE_INTEGER : group,
           node: type,
-          text: sourceCode.getText(type),
+          group: group === -1 ? Number.MAX_SAFE_INTEGER : group,
+          text: context.sourceCode.getText(type),
         };
       });
       const expectedOrder = [...sourceOrder].sort((a, b) => {
         if (a.group !== b.group) {
           return a.group - b.group;
+        }
+
+        if (caseSensitive) {
+          return caseSensitiveSort(a.text, b.text);
         }
 
         return (
@@ -197,8 +225,8 @@ export default util.createRule<Options, MessageIds>({
 
       const hasComments = node.types.some(type => {
         const count =
-          sourceCode.getCommentsBefore(type).length +
-          sourceCode.getCommentsAfter(type).length;
+          context.sourceCode.getCommentsBefore(type).length +
+          context.sourceCode.getCommentsAfter(type).length;
         return count > 0;
       });
 
@@ -212,7 +240,7 @@ export default util.createRule<Options, MessageIds>({
                 ? 'Intersection'
                 : 'Union',
           };
-          if (node.parent?.type === AST_NODE_TYPES.TSTypeAliasDeclaration) {
+          if (node.parent.type === AST_NODE_TYPES.TSTypeAliasDeclaration) {
             messageId = 'notSortedNamed';
             data.name = node.parent.id.name;
           }

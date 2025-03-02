@@ -1,9 +1,10 @@
 import type { TSESLint, TSESTree } from '@typescript-eslint/utils';
-import { AST_NODE_TYPES, AST_TOKEN_TYPES } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-export default util.createRule({
+import { createRule, nullThrows, NullThrowsReasons } from '../util';
+
+export default createRule({
   name: 'consistent-type-definitions',
   meta: {
     type: 'suggestion',
@@ -12,6 +13,7 @@ export default util.createRule({
         'Enforce type definitions to consistently use either `interface` or `type`',
       recommended: 'stylistic',
     },
+    fixable: 'code',
     messages: {
       interfaceOverType: 'Use an `interface` instead of a `type`.',
       typeOverInterface: 'Use a `type` instead of an `interface`.',
@@ -19,27 +21,27 @@ export default util.createRule({
     schema: [
       {
         type: 'string',
+        description: 'Which type definition syntax to prefer.',
         enum: ['interface', 'type'],
       },
     ],
-    fixable: 'code',
   },
   defaultOptions: ['interface'],
   create(context, [option]) {
-    const sourceCode = context.getSourceCode();
-
     /**
      * Iterates from the highest parent to the currently traversed node
      * to determine whether any node in tree is globally declared module declaration
      */
-    function isCurrentlyTraversedNodeWithinModuleDeclaration(): boolean {
-      return context
-        .getAncestors()
+    function isCurrentlyTraversedNodeWithinModuleDeclaration(
+      node: TSESTree.Node,
+    ): boolean {
+      return context.sourceCode
+        .getAncestors(node)
         .some(
           node =>
             node.type === AST_NODE_TYPES.TSModuleDeclaration &&
             node.declare &&
-            node.global,
+            node.kind === 'global',
         );
     }
 
@@ -52,43 +54,58 @@ export default util.createRule({
             node: node.id,
             messageId: 'interfaceOverType',
             fix(fixer) {
-              const typeNode = node.typeParameters ?? node.id;
-              const fixes: TSESLint.RuleFix[] = [];
+              const typeToken = nullThrows(
+                context.sourceCode.getTokenBefore(
+                  node.id,
+                  token => token.value === 'type',
+                ),
+                NullThrowsReasons.MissingToken('type keyword', 'type alias'),
+              );
 
-              const firstToken = sourceCode.getTokenBefore(node.id);
-              if (firstToken) {
-                fixes.push(fixer.replaceText(firstToken, 'interface'));
-                fixes.push(
-                  fixer.replaceTextRange(
-                    [typeNode.range[1], node.typeAnnotation.range[0]],
-                    ' ',
-                  ),
-                );
-              }
+              const equalsToken = nullThrows(
+                context.sourceCode.getTokenBefore(
+                  node.typeAnnotation,
+                  token => token.value === '=',
+                ),
+                NullThrowsReasons.MissingToken('=', 'type alias'),
+              );
 
-              const afterToken = sourceCode.getTokenAfter(node.typeAnnotation);
-              if (
-                afterToken &&
-                afterToken.type === AST_TOKEN_TYPES.Punctuator &&
-                afterToken.value === ';'
-              ) {
-                fixes.push(fixer.remove(afterToken));
-              }
+              const beforeEqualsToken = nullThrows(
+                context.sourceCode.getTokenBefore(equalsToken, {
+                  includeComments: true,
+                }),
+                NullThrowsReasons.MissingToken('before =', 'type alias'),
+              );
 
-              return fixes;
+              return [
+                // replace 'type' with 'interface'.
+                fixer.replaceText(typeToken, 'interface'),
+
+                // delete from the = to the { of the type, and put a space to be pretty.
+                fixer.replaceTextRange(
+                  [beforeEqualsToken.range[1], node.typeAnnotation.range[0]],
+                  ' ',
+                ),
+
+                // remove from the closing } through the end of the statement.
+                fixer.removeRange([
+                  node.typeAnnotation.range[1],
+                  node.range[1],
+                ]),
+              ];
             },
           });
         },
       }),
       ...(option === 'type' && {
         TSInterfaceDeclaration(node): void {
-          const fix = isCurrentlyTraversedNodeWithinModuleDeclaration()
+          const fix = isCurrentlyTraversedNodeWithinModuleDeclaration(node)
             ? null
             : (fixer: TSESLint.RuleFixer): TSESLint.RuleFix[] => {
                 const typeNode = node.typeParameters ?? node.id;
                 const fixes: TSESLint.RuleFix[] = [];
 
-                const firstToken = sourceCode.getTokenBefore(node.id);
+                const firstToken = context.sourceCode.getTokenBefore(node.id);
                 if (firstToken) {
                   fixes.push(fixer.replaceText(firstToken, 'type'));
                   fixes.push(
@@ -99,17 +116,15 @@ export default util.createRule({
                   );
                 }
 
-                if (node.extends) {
-                  node.extends.forEach(heritage => {
-                    const typeIdentifier = sourceCode.getText(heritage);
-                    fixes.push(
-                      fixer.insertTextAfter(node.body, ` & ${typeIdentifier}`),
-                    );
-                  });
-                }
+                node.extends.forEach(heritage => {
+                  const typeIdentifier = context.sourceCode.getText(heritage);
+                  fixes.push(
+                    fixer.insertTextAfter(node.body, ` & ${typeIdentifier}`),
+                  );
+                });
 
                 if (
-                  node.parent?.type === AST_NODE_TYPES.ExportDefaultDeclaration
+                  node.parent.type === AST_NODE_TYPES.ExportDefaultDeclaration
                 ) {
                   fixes.push(
                     fixer.removeRange([node.parent.range[0], node.range[0]]),

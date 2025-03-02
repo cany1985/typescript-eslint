@@ -1,18 +1,22 @@
-import { ScopeType } from '@typescript-eslint/scope-manager';
 import type { TSESLint, TSESTree } from '@typescript-eslint/utils';
+
+import { ScopeType } from '@typescript-eslint/scope-manager';
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import { createRule, getNameLocationInGlobalDirectiveComment } from '../util';
 
-type MessageIds = 'redeclared' | 'redeclaredAsBuiltin' | 'redeclaredBySyntax';
-type Options = [
+export type MessageIds =
+  | 'redeclared'
+  | 'redeclaredAsBuiltin'
+  | 'redeclaredBySyntax';
+export type Options = [
   {
     builtinGlobals?: boolean;
     ignoreDeclarationMerge?: boolean;
   },
 ];
 
-export default util.createRule<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: 'no-redeclare',
   meta: {
     type: 'suggestion',
@@ -20,20 +24,6 @@ export default util.createRule<Options, MessageIds>({
       description: 'Disallow variable redeclaration',
       extendsBaseRule: true,
     },
-    schema: [
-      {
-        type: 'object',
-        properties: {
-          builtinGlobals: {
-            type: 'boolean',
-          },
-          ignoreDeclarationMerge: {
-            type: 'boolean',
-          },
-        },
-        additionalProperties: false,
-      },
-    ],
     messages: {
       redeclared: "'{{id}}' is already defined.",
       redeclaredAsBuiltin:
@@ -41,6 +31,24 @@ export default util.createRule<Options, MessageIds>({
       redeclaredBySyntax:
         "'{{id}}' is already defined by a variable declaration.",
     },
+    schema: [
+      {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          builtinGlobals: {
+            type: 'boolean',
+            description:
+              'Whether to report shadowing of built-in global variables.',
+          },
+          ignoreDeclarationMerge: {
+            type: 'boolean',
+            description:
+              'Whether to ignore declaration merges between certain TypeScript declaration types.',
+          },
+        },
+      },
+    ],
   },
   defaultOptions: [
     {
@@ -49,16 +57,14 @@ export default util.createRule<Options, MessageIds>({
     },
   ],
   create(context, [options]) {
-    const sourceCode = context.getSourceCode();
-
     const CLASS_DECLARATION_MERGE_NODES = new Set<AST_NODE_TYPES>([
+      AST_NODE_TYPES.ClassDeclaration,
       AST_NODE_TYPES.TSInterfaceDeclaration,
       AST_NODE_TYPES.TSModuleDeclaration,
-      AST_NODE_TYPES.ClassDeclaration,
     ]);
     const FUNCTION_DECLARATION_MERGE_NODES = new Set<AST_NODE_TYPES>([
-      AST_NODE_TYPES.TSModuleDeclaration,
       AST_NODE_TYPES.FunctionDeclaration,
+      AST_NODE_TYPES.TSModuleDeclaration,
     ]);
     const ENUM_DECLARATION_MERGE_NODES = new Set<AST_NODE_TYPES>([
       AST_NODE_TYPES.TSEnumDeclaration,
@@ -67,15 +73,14 @@ export default util.createRule<Options, MessageIds>({
 
     function* iterateDeclarations(variable: TSESLint.Scope.Variable): Generator<
       {
-        type: 'builtin' | 'comment' | 'syntax';
-        node?: TSESTree.Comment | TSESTree.Identifier;
         loc?: TSESTree.SourceLocation;
+        node?: TSESTree.Comment | TSESTree.Identifier;
+        type: 'builtin' | 'comment' | 'syntax';
       },
-      void,
-      unknown
+      void
     > {
       if (
-        options?.builtinGlobals &&
+        options.builtinGlobals &&
         'eslintImplicitGlobalSetting' in variable &&
         (variable.eslintImplicitGlobalSetting === 'readonly' ||
           variable.eslintImplicitGlobalSetting === 'writable')
@@ -89,13 +94,13 @@ export default util.createRule<Options, MessageIds>({
       ) {
         for (const comment of variable.eslintExplicitGlobalComments) {
           yield {
-            type: 'comment',
-            node: comment,
-            loc: util.getNameLocationInGlobalDirectiveComment(
-              sourceCode,
+            loc: getNameLocationInGlobalDirectiveComment(
+              context.sourceCode,
               comment,
               variable.name,
             ),
+            node: comment,
+            type: 'comment',
           };
         }
       }
@@ -146,7 +151,7 @@ export default util.createRule<Options, MessageIds>({
 
           // there's more than one class declaration, which needs to be reported
           for (const { identifier } of classDecls) {
-            yield { type: 'syntax', node: identifier, loc: identifier.loc };
+            yield { loc: identifier.loc, node: identifier, type: 'syntax' };
           }
           return;
         }
@@ -167,7 +172,7 @@ export default util.createRule<Options, MessageIds>({
 
           // there's more than one function declaration, which needs to be reported
           for (const { identifier } of functionDecls) {
-            yield { type: 'syntax', node: identifier, loc: identifier.loc };
+            yield { loc: identifier.loc, node: identifier, type: 'syntax' };
           }
           return;
         }
@@ -188,14 +193,14 @@ export default util.createRule<Options, MessageIds>({
 
           // there's more than one enum declaration, which needs to be reported
           for (const { identifier } of enumDecls) {
-            yield { type: 'syntax', node: identifier, loc: identifier.loc };
+            yield { loc: identifier.loc, node: identifier, type: 'syntax' };
           }
           return;
         }
       }
 
       for (const { identifier } of identifiers) {
-        yield { type: 'syntax', node: identifier, loc: identifier.loc };
+        yield { loc: identifier.loc, node: identifier, type: 'syntax' };
       }
     }
 
@@ -220,12 +225,12 @@ export default util.createRule<Options, MessageIds>({
         const data = { id: variable.name };
 
         // Report extra declarations.
-        for (const { type, node, loc } of extraDeclarations) {
+        for (const { loc, node, type } of extraDeclarations) {
           const messageId =
             type === declaration.type ? 'redeclared' : detailMessageId;
 
           if (node) {
-            context.report({ node, loc, messageId, data });
+            context.report({ loc, node, messageId, data });
           } else if (loc) {
             context.report({ loc, messageId, data });
           }
@@ -237,7 +242,7 @@ export default util.createRule<Options, MessageIds>({
      * Find variables in the current scope.
      */
     function checkForBlock(node: TSESTree.Node): void {
-      const scope = context.getScope();
+      const scope = context.sourceCode.getScope(node);
 
       /*
        * In ES5, some node type such as `BlockStatement` doesn't have that scope.
@@ -249,8 +254,17 @@ export default util.createRule<Options, MessageIds>({
     }
 
     return {
-      Program(): void {
-        const scope = context.getScope();
+      ArrowFunctionExpression: checkForBlock,
+
+      BlockStatement: checkForBlock,
+      ForInStatement: checkForBlock,
+      ForOfStatement: checkForBlock,
+
+      ForStatement: checkForBlock,
+      FunctionDeclaration: checkForBlock,
+      FunctionExpression: checkForBlock,
+      Program(node): void {
+        const scope = context.sourceCode.getScope(node);
 
         findVariablesInScope(scope);
 
@@ -264,15 +278,6 @@ export default util.createRule<Options, MessageIds>({
           findVariablesInScope(scope.childScopes[0]);
         }
       },
-
-      FunctionDeclaration: checkForBlock,
-      FunctionExpression: checkForBlock,
-      ArrowFunctionExpression: checkForBlock,
-
-      BlockStatement: checkForBlock,
-      ForStatement: checkForBlock,
-      ForInStatement: checkForBlock,
-      ForOfStatement: checkForBlock,
       SwitchStatement: checkForBlock,
     };
   },

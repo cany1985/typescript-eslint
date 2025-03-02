@@ -1,6 +1,11 @@
 import type { analyze, ScopeManager } from '@typescript-eslint/scope-manager';
 import type { astConverter } from '@typescript-eslint/typescript-estree/use-at-your-own-risk';
-import type { TSESLint, TSESTree } from '@typescript-eslint/utils';
+import type { TSESTree } from '@typescript-eslint/utils';
+import type {
+  ClassicConfig,
+  Linter,
+  SourceCode,
+} from '@typescript-eslint/utils/ts-eslint';
 import type esquery from 'esquery';
 import type * as ts from 'typescript';
 
@@ -8,30 +13,29 @@ export type { ParseSettings } from '@typescript-eslint/typescript-estree/use-at-
 
 export interface UpdateModel {
   storedAST?: TSESTree.Program;
-  storedTsAST?: ts.SourceFile;
   storedScope?: ScopeManager;
+  storedTsAST?: ts.Node;
   typeChecker?: ts.TypeChecker;
 }
 
 export interface WebLinterModule {
-  createLinter: () => TSESLint.Linter;
   analyze: typeof analyze;
-  visitorKeys: TSESLint.SourceCode.VisitorKeys;
   astConverter: typeof astConverter;
+  configs: Record<string, ClassicConfig.Config>;
+  createLinter: () => Linter;
   esquery: typeof esquery;
-  configs: Record<string, TSESLint.Linter.Config>;
+  visitorKeys: SourceCode.VisitorKeys;
 }
 
-export type PlaygroundSystem = Required<
-  Pick<ts.System, 'deleteFile' | 'watchFile'>
-> &
-  ts.System & {
-    removeFile: (fileName: string) => void;
-  };
+export type PlaygroundSystem = {
+  removeFile: (fileName: string) => void;
+  searchFiles: (path: string) => string[];
+} & Required<Pick<ts.System, 'deleteFile' | 'watchFile'>> &
+  ts.System;
 
 export type LinterOnLint = (
   fileName: string,
-  messages: TSESLint.Linter.LintMessage[],
+  messages: Linter.LintMessage[],
 ) => void;
 
 export type LinterOnParse = (fileName: string, model: UpdateModel) => void;

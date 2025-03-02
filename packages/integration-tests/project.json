@@ -2,17 +2,11 @@
   "name": "integration-tests",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "type": "library",
-  "implicitDependencies": [],
+  "implicitDependencies": ["typescript-eslint"],
   "targets": {
     "lint": {
-      "executor": "@nrwl/linter:eslint",
-      "outputs": ["{options.outputFile}"],
-      "options": {
-        "lintFilePatterns": [
-          "packages/integration-tests/**/*.{mts,cts,ts,tsx}"
-        ],
-        "ignorePath": ".eslintignore"
-      }
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"]
     }
   }
 }
