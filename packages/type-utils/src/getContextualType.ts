@@ -10,9 +10,6 @@ export function getContextualType(
   node: ts.Expression,
 ): ts.Type | undefined {
   const parent = node.parent;
-  if (!parent) {
-    return;
-  }
 
   if (ts.isCallExpression(parent) || ts.isNewExpression(parent)) {
     if (node === parent.expression) {
@@ -27,7 +24,11 @@ export function getContextualType(
     return parent.type ? checker.getTypeFromTypeNode(parent.type) : undefined;
   } else if (ts.isJsxExpression(parent)) {
     return checker.getContextualType(parent);
-  } else if (ts.isPropertyAssignment(parent) && ts.isIdentifier(node)) {
+  } else if (
+    ts.isIdentifier(node) &&
+    (ts.isPropertyAssignment(parent) ||
+      ts.isShorthandPropertyAssignment(parent))
+  ) {
     return checker.getContextualType(node);
   } else if (
     ts.isBinaryExpression(parent) &&
@@ -37,7 +38,7 @@ export function getContextualType(
     // is RHS of assignment
     return checker.getTypeAtLocation(parent.left);
   } else if (
-    ![ts.SyntaxKind.TemplateSpan, ts.SyntaxKind.JsxExpression].includes(
+    ![ts.SyntaxKind.JsxExpression, ts.SyntaxKind.TemplateSpan].includes(
       parent.kind,
     )
   ) {

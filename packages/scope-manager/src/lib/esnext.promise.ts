@@ -1,13 +1,13 @@
 // THIS CODE WAS AUTOMATICALLY GENERATED
 // DO NOT EDIT THIS CODE BY HAND
 // RUN THE FOLLOWING COMMAND FROM THE WORKSPACE ROOT TO REGENERATE:
-// npx nx generate-lib @typescript-eslint/scope-manager
+// npx nx generate-lib repo
 
-import type { ImplicitLibVariableOptions } from '../variable';
-import { TYPE, TYPE_VALUE } from './base-config';
+import type { LibDefinition } from '../variable';
 
-export const esnext_promise = {
-  AggregateError: TYPE_VALUE,
-  AggregateErrorConstructor: TYPE,
-  PromiseConstructor: TYPE,
-} as Record<string, ImplicitLibVariableOptions>;
+import { TYPE } from './base-config';
+
+export const esnext_promise: LibDefinition = {
+  libs: [],
+  variables: [['PromiseConstructor', TYPE]],
+};

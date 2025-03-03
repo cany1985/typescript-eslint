@@ -1,12 +1,12 @@
-name: '🐛 Report a Bug With Another Package'
-description: 'Report a bug you encountered with another one of our packages (parser, util, scope-manager, etc)'
+name: '🐛 Bug With Another Package'
+description: 'An issue with another one of our packages (parser, utils, etc)'
 title: 'Bug: <short description of the issue>'
 labels:
   - bug
   - triage
 body:
   - type: checkboxes
-    id: sanity-checks
+    id: preliminary-checks
     attributes:
       label: Before You File a Bug Report Please Confirm You Have Done The Following...
       description: If any of these required steps are not taken, we may not be able to review your issue. Help us to help you!
@@ -20,7 +20,11 @@ body:
         - label: I have [read the FAQ](https://typescript-eslint.io/linting/troubleshooting) and my problem is not listed.
           required: true
   - type: markdown
-    id: complexity-note
+    attributes:
+      value: |
+        **All typescript-eslint bug reports need an isolated reproduction** we can clone locally and get running without other projects or existing knowledge of your project.
+        If you can't provide one, your report will likely be closed without action.
+  - type: markdown
     attributes:
       value: |
         ### Note For Complex Issues
@@ -34,12 +38,16 @@ body:
       description: Select the package against which you want to report the bug.
       options:
         - ast-spec
-        - eslint-plugin-tslint
+        - eslint-plugin
         - parser
         - rule-tester
         - scope-manager
+        - type-utils
+        - types
+        - typescript-eslint
         - typescript-estree
         - utils
+        - visitor-keys
         - website
     validations:
       required: true
@@ -54,7 +62,7 @@ body:
     attributes:
       label: Repro Code
       description: A ***minimal*** code sample which reproduces the issue
-      render: typescript
+      render: TypeScript
     validations:
       required: true
   - type: textarea

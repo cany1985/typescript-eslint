@@ -1,11 +1,11 @@
-import path from 'path';
+import path from 'node:path';
 
 import { ExpiringCache } from '../../src/parseSettings/ExpiringCache';
 import { getProjectConfigFiles } from '../../src/parseSettings/getProjectConfigFiles';
 
 const mockExistsSync = jest.fn<boolean, [string]>();
 
-jest.mock('fs', () => ({
+jest.mock('node:fs', () => ({
   ...jest.requireActual('fs'),
   existsSync: (filePath: string): boolean => mockExistsSync(filePath),
 }));
@@ -38,12 +38,14 @@ describe('getProjectConfigFiles', () => {
     expect(actual).toEqual(project);
   });
 
-  it('returns the project when given as undefined', () => {
-    const project = undefined;
+  describe('it does not enable type-aware linting when given as', () => {
+    for (const project of [undefined, null, false]) {
+      it(`${project}`, () => {
+        const actual = getProjectConfigFiles(parseSettings, project);
 
-    const actual = getProjectConfigFiles(parseSettings, project);
-
-    expect(actual).toBeNull();
+        expect(actual).toBeNull();
+      });
+    }
   });
 
   describe('when caching hits', () => {
@@ -70,8 +72,8 @@ describe('getProjectConfigFiles', () => {
       getProjectConfigFiles(
         {
           filePath: './a/b/c/d.ts',
-          tsconfigRootDir: './a',
           tsconfigMatchCache,
+          tsconfigRootDir: './a',
         },
         true,
       );
@@ -81,8 +83,8 @@ describe('getProjectConfigFiles', () => {
       const actual = getProjectConfigFiles(
         {
           filePath: './a/b/c/e/f.ts',
-          tsconfigRootDir: './a',
           tsconfigMatchCache,
+          tsconfigRootDir: './a',
         },
         true,
       );
@@ -102,8 +104,8 @@ describe('getProjectConfigFiles', () => {
       getProjectConfigFiles(
         {
           filePath: './a/b/c/d/e.ts',
-          tsconfigRootDir: './a',
           tsconfigMatchCache,
+          tsconfigRootDir: './a',
         },
         true,
       );
@@ -113,8 +115,8 @@ describe('getProjectConfigFiles', () => {
       const actual = getProjectConfigFiles(
         {
           filePath: './a/b/f/g/h.ts',
-          tsconfigRootDir: './a',
           tsconfigMatchCache,
+          tsconfigRootDir: './a',
         },
         true,
       );

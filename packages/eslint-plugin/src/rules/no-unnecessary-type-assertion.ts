@@ -1,20 +1,35 @@
+import type { Scope } from '@typescript-eslint/scope-manager';
 import type { TSESTree } from '@typescript-eslint/utils';
-import { AST_NODE_TYPES } from '@typescript-eslint/utils';
+import type { ReportFixFunction } from '@typescript-eslint/utils/ts-eslint';
+
+import { AST_NODE_TYPES, AST_TOKEN_TYPES } from '@typescript-eslint/utils';
 import * as tsutils from 'ts-api-utils';
 import * as ts from 'typescript';
 
-import * as util from '../util';
+import {
+  createRule,
+  getConstrainedTypeAtLocation,
+  getContextualType,
+  getDeclaration,
+  getModifiers,
+  getParserServices,
+  isNullableType,
+  isTypeFlagSet,
+  nullThrows,
+  NullThrowsReasons,
+} from '../util';
 
-type Options = [
+export type Options = [
   {
     typesToIgnore?: string[];
   },
 ];
-type MessageIds = 'contextuallyUnnecessary' | 'unnecessaryAssertion';
+export type MessageIds = 'contextuallyUnnecessary' | 'unnecessaryAssertion';
 
-export default util.createRule<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: 'no-unnecessary-type-assertion',
   meta: {
+    type: 'suggestion',
     docs: {
       description:
         'Disallow type assertions that do not change the type of an expression',
@@ -23,10 +38,10 @@ export default util.createRule<Options, MessageIds>({
     },
     fixable: 'code',
     messages: {
-      unnecessaryAssertion:
-        'This assertion is unnecessary since it does not change the type of the expression.',
       contextuallyUnnecessary:
         'This assertion is unnecessary since the receiver accepts the original type of the expression.',
+      unnecessaryAssertion:
+        'This assertion is unnecessary since it does not change the type of the expression.',
     },
     schema: [
       {
@@ -34,8 +49,8 @@ export default util.createRule<Options, MessageIds>({
         additionalProperties: false,
         properties: {
           typesToIgnore: {
-            description: 'A list of type names to ignore.',
             type: 'array',
+            description: 'A list of type names to ignore.',
             items: {
               type: 'string',
             },
@@ -43,51 +58,18 @@ export default util.createRule<Options, MessageIds>({
         },
       },
     ],
-    type: 'suggestion',
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    const sourceCode = context.getSourceCode();
-    const services = util.getParserServices(context);
+    const services = getParserServices(context);
     const checker = services.program.getTypeChecker();
     const compilerOptions = services.program.getCompilerOptions();
-
-    /**
-     * Sometimes tuple types don't have ObjectFlags.Tuple set, like when they're being matched against an inferred type.
-     * So, in addition, check if there are integer properties 0..n and no other numeric keys
-     */
-    function couldBeTupleType(type: ts.ObjectType): boolean {
-      const properties = type.getProperties();
-
-      if (properties.length === 0) {
-        return false;
-      }
-      let i = 0;
-
-      for (; i < properties.length; ++i) {
-        const name = properties[i].name;
-
-        if (String(i) !== name) {
-          if (i === 0) {
-            // if there are no integer properties, this is not a tuple
-            return false;
-          }
-          break;
-        }
-      }
-      for (; i < properties.length; ++i) {
-        if (String(+properties[i].name) === properties[i].name) {
-          return false; // if there are any other numeric properties, this is not a tuple
-        }
-      }
-      return true;
-    }
 
     /**
      * Returns true if there's a chance the variable has been used before a value has been assigned to it
      */
     function isPossiblyUsedBeforeAssigned(node: TSESTree.Expression): boolean {
-      const declaration = util.getDeclaration(services, node);
+      const declaration = getDeclaration(services, node);
       if (!declaration) {
         // don't know what the declaration is for some reason, so just assume the worst
         return true;
@@ -101,22 +83,66 @@ export default util.createRule<Options, MessageIds>({
         ) &&
         // ignore class properties as they are compile time guarded
         // also ignore function arguments as they can't be used before defined
-        ts.isVariableDeclaration(declaration) &&
-        // is it `const x!: number`
-        declaration.initializer === undefined &&
-        declaration.exclamationToken === undefined &&
-        declaration.type !== undefined
+        ts.isVariableDeclaration(declaration)
       ) {
-        // check if the defined variable type has changed since assignment
-        const declarationType = checker.getTypeFromTypeNode(declaration.type);
-        const type = util.getConstrainedTypeAtLocation(services, node);
-        if (declarationType === type) {
-          // possibly used before assigned, so just skip it
-          // better to false negative and skip it, than false positive and fix to compile erroring code
-          //
-          // no better way to figure this out right now
-          // https://github.com/Microsoft/TypeScript/issues/31124
-          return true;
+        // For var declarations, we need to check whether the node
+        // is actually in a descendant of its declaration or not. If not,
+        // it may be used before defined.
+
+        // eg
+        // if (Math.random() < 0.5) {
+        //     var x: number  = 2;
+        // } else {
+        //     x!.toFixed();
+        // }
+        if (
+          ts.isVariableDeclarationList(declaration.parent) &&
+          // var
+          declaration.parent.flags === ts.NodeFlags.None &&
+          // If they are not in the same file it will not exist.
+          // This situation must not occur using before defined.
+          services.tsNodeToESTreeNodeMap.has(declaration)
+        ) {
+          const declaratorNode: TSESTree.VariableDeclaration =
+            services.tsNodeToESTreeNodeMap.get(declaration);
+          const scope = context.sourceCode.getScope(node);
+          const declaratorScope = context.sourceCode.getScope(declaratorNode);
+          let parentScope: Scope | null = declaratorScope;
+          while ((parentScope = parentScope.upper)) {
+            if (parentScope === scope) {
+              return true;
+            }
+          }
+        }
+
+        if (
+          // is it `const x!: number`
+          declaration.initializer == null &&
+          declaration.exclamationToken == null &&
+          declaration.type != null
+        ) {
+          // check if the defined variable type has changed since assignment
+          const declarationType = checker.getTypeFromTypeNode(declaration.type);
+          const type = getConstrainedTypeAtLocation(services, node);
+          if (
+            declarationType === type &&
+            // `declare`s are never narrowed, so never skip them
+            !(
+              ts.isVariableDeclarationList(declaration.parent) &&
+              ts.isVariableStatement(declaration.parent.parent) &&
+              tsutils.includesModifier(
+                getModifiers(declaration.parent.parent),
+                ts.SyntaxKind.DeclareKeyword,
+              )
+            )
+          ) {
+            // possibly used before assigned, so just skip it
+            // better to false negative and skip it, than false positive and fix to compile erroring code
+            //
+            // no better way to figure this out right now
+            // https://github.com/Microsoft/TypeScript/issues/31124
+            return true;
+          }
         }
       }
       return false;
@@ -130,22 +156,167 @@ export default util.createRule<Options, MessageIds>({
       );
     }
 
+    function isTemplateLiteralWithExpressions(expression: TSESTree.Expression) {
+      return (
+        expression.type === AST_NODE_TYPES.TemplateLiteral &&
+        expression.expressions.length !== 0
+      );
+    }
+
+    function isImplicitlyNarrowedLiteralDeclaration({
+      expression,
+      parent,
+    }: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion): boolean {
+      /**
+       * Even on `const` variable declarations, template literals with expressions can sometimes be widened without a type assertion.
+       * @see https://github.com/typescript-eslint/typescript-eslint/issues/8737
+       */
+      if (isTemplateLiteralWithExpressions(expression)) {
+        return false;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const maybeDeclarationNode = parent.parent!;
+
+      return (
+        (maybeDeclarationNode.type === AST_NODE_TYPES.VariableDeclaration &&
+          maybeDeclarationNode.kind === 'const') ||
+        (parent.type === AST_NODE_TYPES.PropertyDefinition && parent.readonly)
+      );
+    }
+
+    function isTypeUnchanged(uncast: ts.Type, cast: ts.Type): boolean {
+      if (uncast === cast) {
+        return true;
+      }
+
+      if (
+        isTypeFlagSet(uncast, ts.TypeFlags.Undefined) &&
+        isTypeFlagSet(cast, ts.TypeFlags.Undefined) &&
+        tsutils.isCompilerOptionEnabled(
+          compilerOptions,
+          'exactOptionalPropertyTypes',
+        )
+      ) {
+        const uncastParts = tsutils
+          .unionTypeParts(uncast)
+          .filter(part => !isTypeFlagSet(part, ts.TypeFlags.Undefined));
+
+        const castParts = tsutils
+          .unionTypeParts(cast)
+          .filter(part => !isTypeFlagSet(part, ts.TypeFlags.Undefined));
+
+        if (uncastParts.length !== castParts.length) {
+          return false;
+        }
+
+        const uncastPartsSet = new Set(uncastParts);
+        return castParts.every(part => uncastPartsSet.has(part));
+      }
+
+      return false;
+    }
+
     return {
-      TSNonNullExpression(node): void {
+      'TSAsExpression, TSTypeAssertion'(
+        node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
+      ): void {
         if (
-          node.parent?.type === AST_NODE_TYPES.AssignmentExpression &&
+          options.typesToIgnore?.includes(
+            context.sourceCode.getText(node.typeAnnotation),
+          )
+        ) {
+          return;
+        }
+
+        const castType = services.getTypeAtLocation(node);
+        const uncastType = services.getTypeAtLocation(node.expression);
+        const typeIsUnchanged = isTypeUnchanged(uncastType, castType);
+
+        const wouldSameTypeBeInferred = castType.isLiteral()
+          ? isImplicitlyNarrowedLiteralDeclaration(node)
+          : !isConstAssertion(node.typeAnnotation);
+
+        if (typeIsUnchanged && wouldSameTypeBeInferred) {
+          context.report({
+            node,
+            messageId: 'unnecessaryAssertion',
+            fix(fixer) {
+              if (node.type === AST_NODE_TYPES.TSTypeAssertion) {
+                const openingAngleBracket = nullThrows(
+                  context.sourceCode.getTokenBefore(
+                    node.typeAnnotation,
+                    token =>
+                      token.type === AST_TOKEN_TYPES.Punctuator &&
+                      token.value === '<',
+                  ),
+                  NullThrowsReasons.MissingToken('<', 'type annotation'),
+                );
+                const closingAngleBracket = nullThrows(
+                  context.sourceCode.getTokenAfter(
+                    node.typeAnnotation,
+                    token =>
+                      token.type === AST_TOKEN_TYPES.Punctuator &&
+                      token.value === '>',
+                  ),
+                  NullThrowsReasons.MissingToken('>', 'type annotation'),
+                );
+
+                // < ( number ) > ( 3 + 5 )
+                // ^---remove---^
+                return fixer.removeRange([
+                  openingAngleBracket.range[0],
+                  closingAngleBracket.range[1],
+                ]);
+              }
+              // `as` is always present in TSAsExpression
+              const asToken = nullThrows(
+                context.sourceCode.getTokenAfter(
+                  node.expression,
+                  token =>
+                    token.type === AST_TOKEN_TYPES.Identifier &&
+                    token.value === 'as',
+                ),
+                NullThrowsReasons.MissingToken('>', 'type annotation'),
+              );
+              const tokenBeforeAs = nullThrows(
+                context.sourceCode.getTokenBefore(asToken, {
+                  includeComments: true,
+                }),
+                NullThrowsReasons.MissingToken('comment', 'as'),
+              );
+
+              // ( 3 + 5 )  as  number
+              //          ^--remove--^
+              return fixer.removeRange([tokenBeforeAs.range[1], node.range[1]]);
+            },
+          });
+        }
+
+        // TODO - add contextually unnecessary check for this
+      },
+      TSNonNullExpression(node): void {
+        const removeExclamationFix: ReportFixFunction = fixer => {
+          const exclamationToken = nullThrows(
+            context.sourceCode.getLastToken(node, token => token.value === '!'),
+            NullThrowsReasons.MissingToken(
+              'exclamation mark',
+              'non-null assertion',
+            ),
+          );
+
+          return fixer.removeRange(exclamationToken.range);
+        };
+
+        if (
+          node.parent.type === AST_NODE_TYPES.AssignmentExpression &&
           node.parent.operator === '='
         ) {
           if (node.parent.left === node) {
             context.report({
               node,
               messageId: 'contextuallyUnnecessary',
-              fix(fixer) {
-                return fixer.removeRange([
-                  node.expression.range[1],
-                  node.range[1],
-                ]);
-              },
+              fix: removeExclamationFix,
             });
           }
           // for all other = assignments we ignore non-null checks
@@ -157,50 +328,54 @@ export default util.createRule<Options, MessageIds>({
 
         const originalNode = services.esTreeNodeToTSNodeMap.get(node);
 
-        const type = util.getConstrainedTypeAtLocation(
-          services,
-          node.expression,
-        );
+        const type = getConstrainedTypeAtLocation(services, node.expression);
 
-        if (!util.isNullableType(type)) {
-          if (isPossiblyUsedBeforeAssigned(node.expression)) {
+        if (!isNullableType(type)) {
+          if (
+            node.expression.type === AST_NODE_TYPES.Identifier &&
+            isPossiblyUsedBeforeAssigned(node.expression)
+          ) {
             return;
           }
 
           context.report({
             node,
             messageId: 'unnecessaryAssertion',
-            fix(fixer) {
-              return fixer.removeRange([
-                node.expression.range[1],
-                node.range[1],
-              ]);
-            },
+            fix: removeExclamationFix,
           });
         } else {
           // we know it's a nullable type
           // so figure out if the variable is used in a place that accepts nullable types
 
-          const contextualType = util.getContextualType(checker, originalNode);
+          const contextualType = getContextualType(checker, originalNode);
           if (contextualType) {
+            if (
+              isTypeFlagSet(type, ts.TypeFlags.Unknown) &&
+              !isTypeFlagSet(contextualType, ts.TypeFlags.Unknown)
+            ) {
+              return;
+            }
+
             // in strict mode you can't assign null to undefined, so we have to make sure that
             // the two types share a nullable type
-            const typeIncludesUndefined = util.isTypeFlagSet(
+            const typeIncludesUndefined = isTypeFlagSet(
               type,
               ts.TypeFlags.Undefined,
             );
-            const typeIncludesNull = util.isTypeFlagSet(
-              type,
-              ts.TypeFlags.Null,
-            );
+            const typeIncludesNull = isTypeFlagSet(type, ts.TypeFlags.Null);
+            const typeIncludesVoid = isTypeFlagSet(type, ts.TypeFlags.Void);
 
-            const contextualTypeIncludesUndefined = util.isTypeFlagSet(
+            const contextualTypeIncludesUndefined = isTypeFlagSet(
               contextualType,
               ts.TypeFlags.Undefined,
             );
-            const contextualTypeIncludesNull = util.isTypeFlagSet(
+            const contextualTypeIncludesNull = isTypeFlagSet(
               contextualType,
               ts.TypeFlags.Null,
+            );
+            const contextualTypeIncludesVoid = isTypeFlagSet(
+              contextualType,
+              ts.TypeFlags.Void,
             );
 
             // make sure that the parent accepts the same types
@@ -211,74 +386,19 @@ export default util.createRule<Options, MessageIds>({
             const isValidNull = typeIncludesNull
               ? contextualTypeIncludesNull
               : true;
+            const isValidVoid = typeIncludesVoid
+              ? contextualTypeIncludesVoid
+              : true;
 
-            if (isValidUndefined && isValidNull) {
+            if (isValidUndefined && isValidNull && isValidVoid) {
               context.report({
                 node,
                 messageId: 'contextuallyUnnecessary',
-                fix(fixer) {
-                  return fixer.removeRange([
-                    node.expression.range[1],
-                    node.range[1],
-                  ]);
-                },
+                fix: removeExclamationFix,
               });
             }
           }
         }
-      },
-      'TSAsExpression, TSTypeAssertion'(
-        node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
-      ): void {
-        if (
-          options.typesToIgnore?.includes(
-            sourceCode.getText(node.typeAnnotation),
-          ) ||
-          isConstAssertion(node.typeAnnotation)
-        ) {
-          return;
-        }
-
-        const castType = services.getTypeAtLocation(node);
-
-        if (
-          tsutils.isTypeFlagSet(castType, ts.TypeFlags.Literal) ||
-          (tsutils.isObjectType(castType) &&
-            (tsutils.isObjectFlagSet(castType, ts.ObjectFlags.Tuple) ||
-              couldBeTupleType(castType)))
-        ) {
-          // It's not always safe to remove a cast to a literal type or tuple
-          // type, as those types are sometimes widened without the cast.
-          return;
-        }
-
-        const uncastType = services.getTypeAtLocation(node.expression);
-
-        if (uncastType === castType) {
-          context.report({
-            node,
-            messageId: 'unnecessaryAssertion',
-            fix(fixer) {
-              if (node.type === AST_NODE_TYPES.TSTypeAssertion) {
-                const closingAngleBracket = sourceCode.getTokenAfter(
-                  node.typeAnnotation,
-                );
-                return closingAngleBracket?.value === '>'
-                  ? fixer.removeRange([
-                      node.range[0],
-                      closingAngleBracket.range[1],
-                    ])
-                  : null;
-              }
-              return fixer.removeRange([
-                node.expression.range[1] + 1,
-                node.range[1],
-              ]);
-            },
-          });
-        }
-
-        // TODO - add contextually unnecessary check for this
       },
     };
   },

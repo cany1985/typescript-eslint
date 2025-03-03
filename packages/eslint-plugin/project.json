@@ -5,11 +5,13 @@
   "implicitDependencies": [],
   "targets": {
     "lint": {
-      "executor": "@nx/linter:eslint",
-      "outputs": ["{options.outputFile}"],
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"]
+    },
+    "generate-breaking-changes": {
+      "executor": "nx:run-script",
       "options": {
-        "lintFilePatterns": ["packages/eslint-plugin/**/*.{mts,cts,ts,tsx}"],
-        "ignorePath": ".eslintignore"
+        "script": "generate:breaking-changes"
       }
     }
   }

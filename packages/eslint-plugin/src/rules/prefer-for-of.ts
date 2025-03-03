@@ -1,9 +1,10 @@
 import type { TSESLint, TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import { createRule, isAssignee } from '../util';
 
-export default util.createRule({
+export default createRule({
   name: 'prefer-for-of',
   meta: {
     type: 'suggestion',
@@ -68,6 +69,7 @@ export default util.createRule({
       if (!node) {
         return false;
       }
+
       switch (node.type) {
         case AST_NODE_TYPES.UpdateExpression:
           // x++ or ++x
@@ -79,7 +81,8 @@ export default util.createRule({
             if (node.operator === '+=') {
               // x += 1
               return isLiteral(node.right, 1);
-            } else if (node.operator === '=') {
+            }
+            if (node.operator === '=') {
               // x = x + 1 or x = 1 + x
               const expr = node.right;
               return (
@@ -102,77 +105,21 @@ export default util.createRule({
       );
     }
 
-    function isAssignee(node: TSESTree.Node): boolean {
-      const parent = node.parent;
-      if (!parent) {
-        return false;
-      }
-
-      // a[i] = 1, a[i] += 1, etc.
-      if (
-        parent.type === AST_NODE_TYPES.AssignmentExpression &&
-        parent.left === node
-      ) {
-        return true;
-      }
-
-      // delete a[i]
-      if (
-        parent.type === AST_NODE_TYPES.UnaryExpression &&
-        parent.operator === 'delete' &&
-        parent.argument === node
-      ) {
-        return true;
-      }
-
-      // a[i]++, --a[i], etc.
-      if (
-        parent.type === AST_NODE_TYPES.UpdateExpression &&
-        parent.argument === node
-      ) {
-        return true;
-      }
-
-      // [a[i]] = [0]
-      if (parent.type === AST_NODE_TYPES.ArrayPattern) {
-        return true;
-      }
-
-      // [...a[i]] = [0]
-      if (parent.type === AST_NODE_TYPES.RestElement) {
-        return true;
-      }
-
-      // ({ foo: a[i] }) = { foo: 0 }
-      if (
-        parent.type === AST_NODE_TYPES.Property &&
-        parent.value === node &&
-        parent.parent?.type === AST_NODE_TYPES.ObjectExpression &&
-        isAssignee(parent.parent)
-      ) {
-        return true;
-      }
-
-      return false;
-    }
-
     function isIndexOnlyUsedWithArray(
       body: TSESTree.Statement,
       indexVar: TSESLint.Scope.Variable,
       arrayExpression: TSESTree.Expression,
     ): boolean {
-      const sourceCode = context.getSourceCode();
-      const arrayText = sourceCode.getText(arrayExpression);
+      const arrayText = context.sourceCode.getText(arrayExpression);
       return indexVar.references.every(reference => {
         const id = reference.identifier;
         const node = id.parent;
         return (
           !contains(body, id) ||
-          (node !== undefined &&
-            node.type === AST_NODE_TYPES.MemberExpression &&
+          (node.type === AST_NODE_TYPES.MemberExpression &&
             node.object.type !== AST_NODE_TYPES.ThisExpression &&
             node.property === id &&
-            sourceCode.getText(node.object) === arrayText &&
+            context.sourceCode.getText(node.object) === arrayText &&
             !isAssignee(node))
         );
       });
@@ -204,7 +151,7 @@ export default util.createRule({
           return;
         }
 
-        const [indexVar] = context.getDeclaredVariables(node.init);
+        const [indexVar] = context.sourceCode.getDeclaredVariables(node.init);
         if (
           isIncrement(node.update, indexName) &&
           isIndexOnlyUsedWithArray(node.body, indexVar, arrayExpression)

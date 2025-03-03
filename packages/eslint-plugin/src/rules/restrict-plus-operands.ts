@@ -1,10 +1,18 @@
 import type { TSESTree } from '@typescript-eslint/utils';
+
 import * as tsutils from 'ts-api-utils';
 import * as ts from 'typescript';
 
-import * as util from '../util';
+import {
+  createRule,
+  getConstrainedTypeAtLocation,
+  getParserServices,
+  getTypeName,
+  isTypeAnyType,
+  isTypeFlagSet,
+} from '../util';
 
-type Options = [
+export type Options = [
   {
     allowAny?: boolean;
     allowBoolean?: boolean;
@@ -15,16 +23,27 @@ type Options = [
   },
 ];
 
-type MessageIds = 'bigintAndNumber' | 'invalid' | 'mismatched';
+export type MessageIds = 'bigintAndNumber' | 'invalid' | 'mismatched';
 
-export default util.createRule<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: 'restrict-plus-operands',
   meta: {
     type: 'problem',
     docs: {
       description:
         'Require both operands of addition to be the same type and be `bigint`, `number`, or `string`',
-      recommended: 'recommended',
+      recommended: {
+        recommended: true,
+        strict: [
+          {
+            allowAny: false,
+            allowBoolean: false,
+            allowNullish: false,
+            allowNumberAndString: false,
+            allowRegExp: false,
+          },
+        ],
+      },
       requiresTypeChecking: true,
     },
     messages: {
@@ -41,30 +60,30 @@ export default util.createRule<Options, MessageIds>({
         additionalProperties: false,
         properties: {
           allowAny: {
-            description: 'Whether to allow `any` typed values.',
             type: 'boolean',
+            description: 'Whether to allow `any` typed values.',
           },
           allowBoolean: {
-            description: 'Whether to allow `boolean` typed values.',
             type: 'boolean',
+            description: 'Whether to allow `boolean` typed values.',
           },
           allowNullish: {
+            type: 'boolean',
             description:
               'Whether to allow potentially `null` or `undefined` typed values.',
-            type: 'boolean',
           },
           allowNumberAndString: {
+            type: 'boolean',
             description:
               'Whether to allow `bigint`/`number` typed values and `string` typed values to be added together.',
-            type: 'boolean',
           },
           allowRegExp: {
-            description: 'Whether to allow `regexp` typed values.',
             type: 'boolean',
+            description: 'Whether to allow `regexp` typed values.',
           },
           skipCompoundAssignments: {
-            description: 'Whether to skip compound assignments such as `+=`.',
             type: 'boolean',
+            description: 'Whether to skip compound assignments such as `+=`.',
           },
         },
       },
@@ -93,7 +112,7 @@ export default util.createRule<Options, MessageIds>({
       },
     ],
   ) {
-    const services = util.getParserServices(context);
+    const services = getParserServices(context);
     const typeChecker = services.program.getTypeChecker();
 
     const stringLikes = [
@@ -111,7 +130,7 @@ export default util.createRule<Options, MessageIds>({
 
     function getTypeConstrained(node: TSESTree.Node): ts.Type {
       return typeChecker.getBaseTypeOfLiteralType(
-        util.getConstrainedTypeAtLocation(services, node),
+        getConstrainedTypeAtLocation(services, node),
       );
     }
 
@@ -150,18 +169,15 @@ export default util.createRule<Options, MessageIds>({
           (!allowBoolean &&
             isTypeFlagSetInUnion(baseType, ts.TypeFlags.BooleanLike)) ||
           (!allowNullish &&
-            util.isTypeFlagSet(
-              baseType,
-              ts.TypeFlags.Null | ts.TypeFlags.Undefined,
-            ))
+            isTypeFlagSet(baseType, ts.TypeFlags.Null | ts.TypeFlags.Undefined))
         ) {
           context.report({
-            data: {
-              stringLike,
-              type: typeChecker.typeToString(baseType),
-            },
-            messageId: 'invalid',
             node: baseNode,
+            messageId: 'invalid',
+            data: {
+              type: typeChecker.typeToString(baseType),
+              stringLike,
+            },
           });
           hadIndividualComplaint = true;
           continue;
@@ -169,21 +185,21 @@ export default util.createRule<Options, MessageIds>({
 
         // RegExps also contain ts.TypeFlags.Any & ts.TypeFlags.Object
         for (const subBaseType of tsutils.unionTypeParts(baseType)) {
-          const typeName = util.getTypeName(typeChecker, subBaseType);
+          const typeName = getTypeName(typeChecker, subBaseType);
           if (
             typeName === 'RegExp'
               ? !allowRegExp ||
                 tsutils.isTypeFlagSet(otherType, ts.TypeFlags.NumberLike)
-              : (!allowAny && util.isTypeAnyType(subBaseType)) ||
+              : (!allowAny && isTypeAnyType(subBaseType)) ||
                 isDeeplyObjectType(subBaseType)
           ) {
             context.report({
-              data: {
-                stringLike,
-                type: typeChecker.typeToString(subBaseType),
-              },
-              messageId: 'invalid',
               node: baseNode,
+              messageId: 'invalid',
+              data: {
+                type: typeChecker.typeToString(subBaseType),
+                stringLike,
+              },
             });
             hadIndividualComplaint = true;
             continue;
@@ -202,16 +218,19 @@ export default util.createRule<Options, MessageIds>({
         if (
           !allowNumberAndString &&
           isTypeFlagSetInUnion(baseType, ts.TypeFlags.StringLike) &&
-          isTypeFlagSetInUnion(otherType, ts.TypeFlags.NumberLike)
+          isTypeFlagSetInUnion(
+            otherType,
+            ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike,
+          )
         ) {
           return context.report({
+            node,
+            messageId: 'mismatched',
             data: {
-              stringLike,
               left: typeChecker.typeToString(leftType),
               right: typeChecker.typeToString(rightType),
+              stringLike,
             },
-            messageId: 'mismatched',
-            node,
           });
         }
 
@@ -220,12 +239,12 @@ export default util.createRule<Options, MessageIds>({
           isTypeFlagSetInUnion(otherType, ts.TypeFlags.BigIntLike)
         ) {
           return context.report({
+            node,
+            messageId: 'bigintAndNumber',
             data: {
               left: typeChecker.typeToString(leftType),
               right: typeChecker.typeToString(rightType),
             },
-            messageId: 'bigintAndNumber',
-            node,
           });
         }
       }

@@ -1,16 +1,28 @@
 import type { TSESTree } from '@typescript-eslint/utils';
-import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
-import * as util from '../util';
+import { AST_NODE_TYPES } from '@typescript-eslint/utils';
+
+import type {
+  InferMessageIdsTypeFromRule,
+  InferOptionsTypeFromRule,
+} from '../util';
+
+import { createRule, deepMerge } from '../util';
 import { getESLintCoreRule } from '../util/getESLintCoreRule';
 
 const baseRule = getESLintCoreRule('no-empty-function');
 
-type Options = util.InferOptionsTypeFromRule<typeof baseRule>;
-type MessageIds = util.InferMessageIdsTypeFromRule<typeof baseRule>;
+export type Options = InferOptionsTypeFromRule<typeof baseRule>;
+export type MessageIds = InferMessageIdsTypeFromRule<typeof baseRule>;
 
-const schema = util.deepMerge(
+const defaultOptions: Options = [
+  {
+    allow: [],
+  },
+];
+
+const schema = deepMerge(
   // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- https://github.com/microsoft/TypeScript/issues/17002
   Array.isArray(baseRule.meta.schema)
     ? baseRule.meta.schema[0]
@@ -18,6 +30,8 @@ const schema = util.deepMerge(
   {
     properties: {
       allow: {
+        description:
+          'Locations and kinds of functions that are allowed to be empty.',
         items: {
           type: 'string',
           enum: [
@@ -42,24 +56,21 @@ const schema = util.deepMerge(
   },
 ) as unknown as JSONSchema4;
 
-export default util.createRule<Options, MessageIds>({
+export default createRule<Options, MessageIds>({
   name: 'no-empty-function',
   meta: {
     type: 'suggestion',
+    defaultOptions,
     docs: {
       description: 'Disallow empty functions',
-      recommended: 'stylistic',
       extendsBaseRule: true,
+      recommended: 'stylistic',
     },
     hasSuggestions: baseRule.meta.hasSuggestions,
-    schema: [schema],
     messages: baseRule.meta.messages,
+    schema: [schema],
   },
-  defaultOptions: [
-    {
-      allow: [],
-    },
-  ],
+  defaultOptions,
   create(context, [{ allow = [] }]) {
     const rules = baseRule.create(context);
 
@@ -79,7 +90,7 @@ export default util.createRule<Options, MessageIds>({
     function isBodyEmpty(
       node: TSESTree.FunctionDeclaration | TSESTree.FunctionExpression,
     ): boolean {
-      return !node.body || node.body.body.length === 0;
+      return node.body.body.length === 0;
     }
 
     /**
@@ -91,7 +102,7 @@ export default util.createRule<Options, MessageIds>({
     function hasParameterProperties(
       node: TSESTree.FunctionDeclaration | TSESTree.FunctionExpression,
     ): boolean {
-      return node.params?.some(
+      return node.params.some(
         param => param.type === AST_NODE_TYPES.TSParameterProperty,
       );
     }
@@ -107,7 +118,7 @@ export default util.createRule<Options, MessageIds>({
       const parent = node.parent;
       if (
         isBodyEmpty(node) &&
-        parent?.type === AST_NODE_TYPES.MethodDefinition &&
+        parent.type === AST_NODE_TYPES.MethodDefinition &&
         parent.kind === 'constructor'
       ) {
         const { accessibility } = parent;
@@ -135,7 +146,7 @@ export default util.createRule<Options, MessageIds>({
     ): boolean {
       if (isAllowedDecoratedFunctions && isBodyEmpty(node)) {
         const decorators =
-          node.parent?.type === AST_NODE_TYPES.MethodDefinition
+          node.parent.type === AST_NODE_TYPES.MethodDefinition
             ? node.parent.decorators
             : undefined;
         return !!decorators && !!decorators.length;
@@ -150,8 +161,8 @@ export default util.createRule<Options, MessageIds>({
       return (
         isAllowedOverrideMethods &&
         isBodyEmpty(node) &&
-        node.parent?.type === AST_NODE_TYPES.MethodDefinition &&
-        node.parent.override === true
+        node.parent.type === AST_NODE_TYPES.MethodDefinition &&
+        node.parent.override
       );
     }
 

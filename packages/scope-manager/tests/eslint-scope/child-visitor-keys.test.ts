@@ -1,7 +1,7 @@
 import type { TSESTree } from '@typescript-eslint/types';
 
 import { analyze } from '../../src/analyze';
-import { parse } from '../util';
+import { parse } from '../test-utils';
 
 describe('childVisitorKeys option', () => {
   it('should not visit to properties which are not given.', () => {
@@ -11,8 +11,8 @@ describe('childVisitorKeys option', () => {
 
     const decl = ast.body[0] as TSESTree.VariableDeclaration;
     decl.declarations[0].init = {
-      type: 'TestNode',
       argument: decl.declarations[0].init,
+      type: 'TestNode',
     } as never;
 
     const result = analyze(ast, {
@@ -35,8 +35,8 @@ describe('childVisitorKeys option', () => {
 
     const decl = ast.body[0] as TSESTree.VariableDeclaration;
     decl.declarations[0].init = {
-      type: 'TestNode',
       argument: decl.declarations[0].init,
+      type: 'TestNode',
     } as never;
 
     const result = analyze(ast, {

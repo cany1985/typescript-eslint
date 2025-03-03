@@ -1,30 +1,90 @@
 import type { TSESTree } from '@typescript-eslint/utils';
+import type { Type, TypeChecker } from 'typescript';
+
+import {
+  typeMatchesSomeSpecifier,
+  typeOrValueSpecifiersSchema,
+} from '@typescript-eslint/type-utils';
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
-import * as ts from 'typescript';
+import { TypeFlags } from 'typescript';
 
-import * as util from '../util';
+import type { TypeOrValueSpecifier } from '../util';
 
-type Options = [
+import {
+  createRule,
+  getConstrainedTypeAtLocation,
+  getParserServices,
+  getTypeName,
+  isTypeAnyType,
+  isTypeFlagSet,
+  isTypeNeverType,
+} from '../util';
+
+type OptionTester = (
+  type: Type,
+  checker: TypeChecker,
+  recursivelyCheckType: (type: Type) => boolean,
+) => boolean;
+
+const testTypeFlag =
+  (flagsToCheck: TypeFlags): OptionTester =>
+  type =>
+    isTypeFlagSet(type, flagsToCheck);
+
+const optionTesters = (
+  [
+    ['Any', isTypeAnyType],
+    [
+      'Array',
+      (type, checker, recursivelyCheckType): boolean =>
+        (checker.isArrayType(type) || checker.isTupleType(type)) &&
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        recursivelyCheckType(type.getNumberIndexType()!),
+    ],
+    // eslint-disable-next-line @typescript-eslint/internal/prefer-ast-types-enum
+    ['Boolean', testTypeFlag(TypeFlags.BooleanLike)],
+    ['Nullish', testTypeFlag(TypeFlags.Null | TypeFlags.Undefined)],
+    ['Number', testTypeFlag(TypeFlags.NumberLike | TypeFlags.BigIntLike)],
+    [
+      'RegExp',
+      (type, checker): boolean => getTypeName(checker, type) === 'RegExp',
+    ],
+    ['Never', isTypeNeverType],
+  ] as const satisfies [string, OptionTester][]
+).map(([type, tester]) => ({
+  type,
+  option: `allow${type}` as const,
+  tester,
+}));
+
+export type Options = [
   {
-    allowAny?: boolean;
-    allowBoolean?: boolean;
-    allowNullish?: boolean;
-    allowNumber?: boolean;
-    allowRegExp?: boolean;
-    allowNever?: boolean;
-  },
+    allow?: TypeOrValueSpecifier[];
+  } & Partial<Record<(typeof optionTesters)[number]['option'], boolean>>,
 ];
 
-type MessageId = 'invalidType';
+export type MessageId = 'invalidType';
 
-export default util.createRule<Options, MessageId>({
+export default createRule<Options, MessageId>({
   name: 'restrict-template-expressions',
   meta: {
     type: 'problem',
     docs: {
       description:
         'Enforce template literal expressions to be of `string` type',
-      recommended: 'recommended',
+      recommended: {
+        recommended: true,
+        strict: [
+          {
+            allowAny: false,
+            allowBoolean: false,
+            allowNever: false,
+            allowNullish: false,
+            allowNumber: false,
+            allowRegExp: false,
+          },
+        ],
+      },
       requiresTypeChecking: true,
     },
     messages: {
@@ -35,35 +95,18 @@ export default util.createRule<Options, MessageId>({
         type: 'object',
         additionalProperties: false,
         properties: {
-          allowAny: {
-            description:
-              'Whether to allow `any` typed values in template expressions.',
-            type: 'boolean',
-          },
-          allowBoolean: {
-            description:
-              'Whether to allow `boolean` typed values in template expressions.',
-            type: 'boolean',
-          },
-          allowNullish: {
-            description:
-              'Whether to allow `nullish` typed values in template expressions.',
-            type: 'boolean',
-          },
-          allowNumber: {
-            description:
-              'Whether to allow `number` typed values in template expressions.',
-            type: 'boolean',
-          },
-          allowRegExp: {
-            description:
-              'Whether to allow `regexp` typed values in template expressions.',
-            type: 'boolean',
-          },
-          allowNever: {
-            description:
-              'Whether to allow `never` typed values in template expressions.',
-            type: 'boolean',
+          ...Object.fromEntries(
+            optionTesters.map(({ type, option }) => [
+              option,
+              {
+                type: 'boolean',
+                description: `Whether to allow \`${type.toLowerCase()}\` typed values in template expressions.`,
+              },
+            ]),
+          ),
+          allow: {
+            description: `Types to allow in template expressions.`,
+            ...typeOrValueSpecifiersSchema,
           },
         },
       },
@@ -71,6 +114,7 @@ export default util.createRule<Options, MessageId>({
   },
   defaultOptions: [
     {
+      allow: [{ name: ['Error', 'URL', 'URLSearchParams'], from: 'lib' }],
       allowAny: true,
       allowBoolean: true,
       allowNullish: true,
@@ -78,53 +122,13 @@ export default util.createRule<Options, MessageId>({
       allowRegExp: true,
     },
   ],
-  create(context, [options]) {
-    const services = util.getParserServices(context);
-    const checker = services.program.getTypeChecker();
-
-    function isUnderlyingTypePrimitive(type: ts.Type): boolean {
-      if (util.isTypeFlagSet(type, ts.TypeFlags.StringLike)) {
-        return true;
-      }
-
-      if (
-        options.allowNumber &&
-        util.isTypeFlagSet(
-          type,
-          ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike,
-        )
-      ) {
-        return true;
-      }
-
-      if (
-        options.allowBoolean &&
-        util.isTypeFlagSet(type, ts.TypeFlags.BooleanLike)
-      ) {
-        return true;
-      }
-
-      if (options.allowAny && util.isTypeAnyType(type)) {
-        return true;
-      }
-
-      if (options.allowRegExp && util.getTypeName(checker, type) === 'RegExp') {
-        return true;
-      }
-
-      if (
-        options.allowNullish &&
-        util.isTypeFlagSet(type, ts.TypeFlags.Null | ts.TypeFlags.Undefined)
-      ) {
-        return true;
-      }
-
-      if (options.allowNever && util.isTypeNeverType(type)) {
-        return true;
-      }
-
-      return false;
-    }
+  create(context, [{ allow, ...options }]) {
+    const services = getParserServices(context);
+    const { program } = services;
+    const checker = program.getTypeChecker();
+    const enabledOptionTesters = optionTesters.filter(
+      ({ option }) => options[option],
+    );
 
     return {
       TemplateLiteral(node: TSESTree.TemplateLiteral): void {
@@ -134,17 +138,12 @@ export default util.createRule<Options, MessageId>({
         }
 
         for (const expression of node.expressions) {
-          const expressionType = util.getConstrainedTypeAtLocation(
+          const expressionType = getConstrainedTypeAtLocation(
             services,
             expression,
           );
 
-          if (
-            !isInnerUnionOrIntersectionConformingTo(
-              expressionType,
-              isUnderlyingTypePrimitive,
-            )
-          ) {
+          if (!recursivelyCheckType(expressionType)) {
             context.report({
               node: expression,
               messageId: 'invalidType',
@@ -155,23 +154,22 @@ export default util.createRule<Options, MessageId>({
       },
     };
 
-    function isInnerUnionOrIntersectionConformingTo(
-      type: ts.Type,
-      predicate: (underlyingType: ts.Type) => boolean,
-    ): boolean {
-      return rec(type);
-
-      function rec(innerType: ts.Type): boolean {
-        if (innerType.isUnion()) {
-          return innerType.types.every(rec);
-        }
-
-        if (innerType.isIntersection()) {
-          return innerType.types.some(rec);
-        }
-
-        return predicate(innerType);
+    function recursivelyCheckType(innerType: Type): boolean {
+      if (innerType.isUnion()) {
+        return innerType.types.every(recursivelyCheckType);
       }
+
+      if (innerType.isIntersection()) {
+        return innerType.types.some(recursivelyCheckType);
+      }
+
+      return (
+        isTypeFlagSet(innerType, TypeFlags.StringLike) ||
+        typeMatchesSomeSpecifier(innerType, allow, program) ||
+        enabledOptionTesters.some(({ tester }) =>
+          tester(innerType, checker, recursivelyCheckType),
+        )
+      );
     }
   },
 });

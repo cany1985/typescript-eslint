@@ -1,15 +1,22 @@
 import type { TSESTree } from '@typescript-eslint/utils';
+
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 import * as tsutils from 'ts-api-utils';
 import * as ts from 'typescript';
 
-import * as util from '../util';
+import {
+  createRule,
+  getOperatorPrecedence,
+  getParserServices,
+  OperatorPrecedence,
+} from '../util';
 
-export default util.createRule({
+export default createRule({
   name: 'non-nullable-type-assertion-style',
   meta: {
+    type: 'suggestion',
     docs: {
-      description: 'Enforce non-null assertions over explicit type casts',
+      description: 'Enforce non-null assertions over explicit type assertions',
       recommended: 'stylistic',
       requiresTypeChecking: true,
     },
@@ -19,13 +26,11 @@ export default util.createRule({
         'Use a ! assertion to more succinctly remove null and undefined from the type.',
     },
     schema: [],
-    type: 'suggestion',
   },
   defaultOptions: [],
 
   create(context) {
-    const services = util.getParserServices(context);
-    const sourceCode = context.getSourceCode();
+    const services = getParserServices(context);
 
     const getTypesIfNotLoose = (node: TSESTree.Node): ts.Type[] | undefined => {
       const type = services.getTypeAtLocation(node);
@@ -43,7 +48,9 @@ export default util.createRule({
       if (type.flags & ts.TypeFlags.TypeParameter) {
         const constraint = type.getConstraint();
         return constraint == null || couldBeNullish(constraint);
-      } else if (tsutils.isUnionType(type)) {
+      }
+
+      if (tsutils.isUnionType(type)) {
         for (const part of type.types) {
           if (couldBeNullish(part)) {
             return true;
@@ -114,15 +121,19 @@ export default util.createRule({
         }
 
         if (sameTypeWithoutNullish(assertedTypes, originalTypes)) {
-          const expressionSourceCode = sourceCode.getText(node.expression);
+          const expressionSourceCode = context.sourceCode.getText(
+            node.expression,
+          );
 
           const higherPrecedenceThanUnary =
-            util.getOperatorPrecedence(
+            getOperatorPrecedence(
               services.esTreeNodeToTSNodeMap.get(node.expression).kind,
               ts.SyntaxKind.Unknown,
-            ) > util.OperatorPrecedence.Unary;
+            ) > OperatorPrecedence.Unary;
 
           context.report({
+            node,
+            messageId: 'preferNonNullAssertion',
             fix(fixer) {
               return fixer.replaceText(
                 node,
@@ -131,8 +142,6 @@ export default util.createRule({
                   : `(${expressionSourceCode})!`,
               );
             },
-            messageId: 'preferNonNullAssertion',
-            node,
           });
         }
       },

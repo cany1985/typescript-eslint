@@ -9,11 +9,21 @@ export interface ImportDeclaration extends BaseNode {
   type: AST_NODE_TYPES.ImportDeclaration;
   /**
    * The assertions declared for the export.
+   * @example
+   * ```ts
+   * import * from 'mod' assert \{ type: 'json' \};
    * ```
-   * import * from 'mod' assert { type: 'json' };
-   * ```
+   * @deprecated Replaced with {@link `attributes`}.
    */
   assertions: ImportAttribute[];
+  /**
+   * The attributes declared for the export.
+   * @example
+   * ```ts
+   * import * from 'mod' with \{ type: 'json' \};
+   * ```
+   */
+  attributes: ImportAttribute[];
   /**
    * The kind of the import.
    */

@@ -1,9 +1,10 @@
 import type { Definition } from '@typescript-eslint/scope-manager';
-import { DefinitionType } from '@typescript-eslint/scope-manager';
 import type { TSESLint } from '@typescript-eslint/utils';
+
+import { DefinitionType } from '@typescript-eslint/scope-manager';
 import { ASTUtils, TSESTree } from '@typescript-eslint/utils';
 
-import * as util from '../util';
+import { createRule, nullThrows, NullThrowsReasons } from '../util';
 
 function hasAssignmentBeforeNode(
   variable: TSESLint.Scope.Variable,
@@ -26,12 +27,10 @@ function isDefinitionWithAssignment(definition: Definition): boolean {
   }
 
   const variableDeclarator = definition.node;
-  return (
-    variableDeclarator.definite === true || variableDeclarator.init != null
-  );
+  return variableDeclarator.definite || variableDeclarator.init != null;
 }
 
-export default util.createRule({
+export default createRule({
   name: 'no-non-null-asserted-nullish-coalescing',
   meta: {
     type: 'problem',
@@ -40,13 +39,13 @@ export default util.createRule({
         'Disallow non-null assertions in the left operand of a nullish coalescing operator',
       recommended: 'strict',
     },
+    hasSuggestions: true,
     messages: {
       noNonNullAssertedNullishCoalescing:
         'The nullish coalescing operator is designed to handle undefined and null - using a non-null assertion is not needed.',
       suggestRemovingNonNull: 'Remove the non-null assertion.',
     },
     schema: [],
-    hasSuggestions: true,
   },
   defaultOptions: [],
   create(context) {
@@ -55,15 +54,13 @@ export default util.createRule({
         node: TSESTree.TSNonNullExpression,
       ): void {
         if (node.expression.type === TSESTree.AST_NODE_TYPES.Identifier) {
-          const scope = context.getScope();
+          const scope = context.sourceCode.getScope(node);
           const identifier = node.expression;
           const variable = ASTUtils.findVariable(scope, identifier.name);
           if (variable && !hasAssignmentBeforeNode(variable, node)) {
             return;
           }
         }
-
-        const sourceCode = context.getSourceCode();
 
         context.report({
           node,
@@ -85,15 +82,12 @@ export default util.createRule({
             {
               messageId: 'suggestRemovingNonNull',
               fix(fixer): TSESLint.RuleFix {
-                const exclamationMark = util.nullThrows(
-                  sourceCode.getLastToken(
+                const exclamationMark = nullThrows(
+                  context.sourceCode.getLastToken(
                     node,
                     ASTUtils.isNonNullAssertionPunctuator,
                   ),
-                  util.NullThrowsReasons.MissingToken(
-                    '!',
-                    'Non-null Assertion',
-                  ),
+                  NullThrowsReasons.MissingToken('!', 'Non-null Assertion'),
                 );
                 return fixer.remove(exclamationMark);
               },
