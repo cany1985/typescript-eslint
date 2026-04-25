@@ -1,9 +1,4 @@
 {
-  "packages/eslint-plugin-internal/tests/rules/plugin-test-formatting.test.ts": {
-    "@typescript-eslint/internal/no-dynamic-tests": {
-      "count": 26
-    }
-  },
   "packages/eslint-plugin/tests/rules/dot-notation.test.ts": {
     "@typescript-eslint/internal/no-dynamic-tests": {
       "count": 1
