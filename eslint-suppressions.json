@@ -1,9 +1,4 @@
 {
-  "packages/eslint-plugin/tests/rules/dot-notation.test.ts": {
-    "@typescript-eslint/internal/no-dynamic-tests": {
-      "count": 1
-    }
-  },
   "packages/eslint-plugin/tests/rules/no-this-alias.test.ts": {
     "@typescript-eslint/internal/no-dynamic-tests": {
       "count": 14
