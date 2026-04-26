@@ -23,10 +23,5 @@
     "@typescript-eslint/internal/no-dynamic-tests": {
       "count": 17
     }
-  },
-  "packages/eslint-plugin/tests/rules/sort-type-constituents.test.ts": {
-    "@typescript-eslint/internal/no-dynamic-tests": {
-      "count": 4
-    }
   }
 }
